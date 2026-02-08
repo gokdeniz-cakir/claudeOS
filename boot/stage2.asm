@@ -12,6 +12,10 @@
 [bits 16]
 [org 0x7E00]
 
+%ifndef KERNEL_MAX_SECTORS
+%define KERNEL_MAX_SECTORS 124
+%endif
+
 ; ---------------------------------------------------------------------------
 ; Constants
 ; ---------------------------------------------------------------------------
@@ -30,6 +34,8 @@ VGA_WHITE_ON_BLACK  equ 0x0F
 STAGE2_PADDED_SIZE  equ 0x400       ; Stage 2 padded to 1024 bytes (2 sectors)
 KERNEL_LOAD_ADDR    equ 0x7E00 + STAGE2_PADDED_SIZE  ; = 0x8200 (initial load)
 KERNEL_PHYS_ADDR    equ 0x100000    ; Final kernel location (1MB)
+KERNEL_MAX_BYTES    equ (KERNEL_MAX_SECTORS * 512)
+KERNEL_COPY_DWORDS  equ (KERNEL_MAX_BYTES / 4)
 
 ; E820 memory map storage
 E820_MAP_ADDR       equ 0x0500      ; Physical address for E820 map
@@ -459,10 +465,11 @@ pm_entry:
     jmp .print_pm
 
 .copy_kernel:
-    ; Copy kernel from 0x8200 to 0x100000 (30KB = 7680 dwords)
+    ; Copy loaded kernel window from 0x8200 to 0x100000.
+    ; Size is capped by KERNEL_MAX_SECTORS and enforced by Makefile.
     mov esi, KERNEL_LOAD_ADDR
     mov edi, KERNEL_PHYS_ADDR
-    mov ecx, 7680                   ; 30720 bytes / 4 = 7680 dwords
+    mov ecx, KERNEL_COPY_DWORDS
     cld
     rep movsd
 

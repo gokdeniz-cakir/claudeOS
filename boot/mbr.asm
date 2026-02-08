@@ -9,6 +9,10 @@
 [bits 16]
 [org 0x7C00]
 
+%ifndef KERNEL_MAX_SECTORS
+%define KERNEL_MAX_SECTORS 124
+%endif
+
 ; ---------------------------------------------------------------------------
 ; Constants
 ; ---------------------------------------------------------------------------
@@ -16,7 +20,11 @@ VIDEO_TELETYPE      equ 0x0E        ; INT 0x10 AH: teletype output
 VIDEO_PAGE          equ 0x00        ; Display page number
 
 STAGE2_ADDR         equ 0x7E00      ; Load address for stage 2 + kernel
-DISK_READ_SECTORS   equ 62          ; Sectors to load (31 KB, room for stage2+kernel)
+STAGE2_SECTORS      equ 2           ; Stage 2 is padded to 2 sectors (1024 bytes)
+DISK_READ_SECTORS   equ (STAGE2_SECTORS + KERNEL_MAX_SECTORS)
+FIRST_READ_SECTORS  equ 65          ; Max sectors from 0x7E00 without 64KB wrap
+SECOND_READ_SECTORS equ (DISK_READ_SECTORS - FIRST_READ_SECTORS)
+SECOND_READ_SEG     equ 0x1000      ; Physical 0x10000, contiguous after first chunk
 DISK_READ_RETRIES   equ 3           ; Retry count for disk reads
 
 ; ---------------------------------------------------------------------------
@@ -44,12 +52,23 @@ start:
     call print_string
 
     ; =================================================================
-    ; Load stage 2 + kernel from disk
-    ; INT 13h AH=02h: Read sectors using CHS
-    ;   Sector 2 in CHS = LBA 1 (right after MBR)
+    ; Load stage 2 + kernel from disk via INT 13h extensions (AH=42h)
+    ;   LBA 1 onward (right after MBR), split into two reads to avoid
+    ;   crossing a 64KB segment boundary in the transfer buffer.
     ; =================================================================
     mov si, msg_load
     call print_string
+
+    ; Verify BIOS supports LBA packet reads
+    mov ax, 0x4100
+    mov bx, 0x55AA
+    mov dl, [boot_drive]
+    int 0x13
+    jc .disk_ext_fail
+    cmp bx, 0xAA55
+    jne .disk_ext_fail
+    test cx, 1                       ; Bit 0 = extended disk access support
+    jz .disk_ext_fail
 
     mov di, DISK_READ_RETRIES       ; DI = retry counter
 
@@ -59,26 +78,47 @@ start:
     mov dl, [boot_drive]
     int 0x13
 
-    ; Set up read parameters
-    mov ah, 0x02                    ; Read sectors
-    mov al, DISK_READ_SECTORS       ; Number of sectors
-    mov ch, 0                       ; Cylinder 0
-    mov cl, 2                       ; Sector 2 (CHS sectors are 1-based)
-    mov dh, 0                       ; Head 0
-    mov dl, [boot_drive]            ; Drive number
-    xor bx, bx
-    mov es, bx                      ; ES = 0x0000
-    mov bx, STAGE2_ADDR             ; ES:BX = 0x0000:0x7E00
+    ; First chunk: LBA 1 .. LBA 65 into 0x0000:0x7E00
+    mov byte [dap_size], 0x10
+    mov byte [dap_reserved], 0x00
+    mov word [dap_sector_count], FIRST_READ_SECTORS
+    mov word [dap_buffer_offset], STAGE2_ADDR
+    mov word [dap_buffer_segment], 0x0000
+    mov dword [dap_lba_low], 1
+    mov dword [dap_lba_high], 0
 
+    mov ah, 0x42
+    mov dl, [boot_drive]
+    mov si, dap_packet
     int 0x13
-    jnc .read_ok                    ; CF clear = success
+    jc .read_fail
 
-    ; Read failed — retry
+    ; Second chunk: remaining sectors into 0x1000:0x0000 (phys 0x10000)
+    mov word [dap_sector_count], SECOND_READ_SECTORS
+    mov word [dap_buffer_offset], 0x0000
+    mov word [dap_buffer_segment], SECOND_READ_SEG
+    mov dword [dap_lba_low], (1 + FIRST_READ_SECTORS)
+    mov dword [dap_lba_high], 0
+
+    mov ah, 0x42
+    mov dl, [boot_drive]
+    mov si, dap_packet
+    int 0x13
+    jc .read_fail
+
+    jmp .read_ok
+
+.read_fail:
     dec di
     jnz .read_retry
 
     ; All retries exhausted
     mov si, msg_disk_err
+    call print_string
+    jmp .halt
+
+.disk_ext_fail:
+    mov si, msg_disk_ext_err
     call print_string
     jmp .halt
 
@@ -124,8 +164,19 @@ msg_boot:       db "ClaudeOS booting...", 0x0D, 0x0A, 0
 msg_load:       db "Loading ", 0
 msg_ok:         db "OK", 0x0D, 0x0A, 0
 msg_disk_err:   db "Disk err", 0
+msg_disk_ext_err: db "No INT13 Ext", 0
 
 boot_drive:     db 0
+
+; INT 13h extensions Disk Address Packet (16 bytes)
+dap_packet:
+dap_size:           db 0
+dap_reserved:       db 0
+dap_sector_count:   dw 0
+dap_buffer_offset:  dw 0
+dap_buffer_segment: dw 0
+dap_lba_low:        dd 0
+dap_lba_high:       dd 0
 
 ; ---------------------------------------------------------------------------
 ; Boot signature

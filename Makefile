@@ -75,6 +75,11 @@ LDFLAGS        := -T $(LINKER_SCRIPT) -nostdlib -lgcc -Wl,--oformat,binary
 QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) -no-reboot -no-shutdown \
                   -serial stdio
 
+# --- Boot image limits -------------------------------------------------------
+KERNEL_MAX_SECTORS := 124
+KERNEL_MAX_BYTES   := 63488
+OS_IMAGE_SIZE      := 65536
+
 # --- Phony targets -----------------------------------------------------------
 .PHONY: all run clean
 
@@ -83,11 +88,11 @@ all: $(OS_BIN)
 
 # --- MBR (flat binary, 512 bytes) -------------------------------------------
 $(MBR_BIN): $(MBR_SRC) | $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS_BIN) -o $@ $<
+	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
 # --- Stage 2 (flat binary, padded to 1024 bytes, 2 sectors) -----------------
 $(STAGE2_BIN): $(STAGE2_SRC) | $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS_BIN) -o $@ $<
+	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
 # --- Kernel entry (ELF object) ----------------------------------------------
 $(KENTRY_OBJ): $(KENTRY_SRC) | $(BUILD_DIR)
@@ -184,10 +189,22 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)
 
-# --- Final disk image: MBR + Stage2 + Kernel, padded to 32KB ----------------
+# --- Final disk image: MBR + Stage2 + Kernel, padded to 64KB ----------------
 $(OS_BIN): $(MBR_BIN) $(STAGE2_BIN) $(KERNEL_BIN) | $(BUILD_DIR)
+	@kernel_size=$$(wc -c < $(KERNEL_BIN)); \
+	if [ $$kernel_size -gt $(KERNEL_MAX_BYTES) ]; then \
+		echo "ERROR: kernel.bin is $$kernel_size bytes; max supported is $(KERNEL_MAX_BYTES)."; \
+		echo "Increase KERNEL_MAX_SECTORS and bootloader copy/read constants together."; \
+		exit 1; \
+	fi
 	cat $(MBR_BIN) $(STAGE2_BIN) $(KERNEL_BIN) > $@
-	dd if=/dev/zero bs=1 count=$$((32768 - $$(wc -c < $@))) >> $@ 2>/dev/null || true
+	@image_size=$$(wc -c < $@); \
+	if [ $$image_size -gt $(OS_IMAGE_SIZE) ]; then \
+		echo "ERROR: os.bin is $$image_size bytes; exceeds $(OS_IMAGE_SIZE)-byte image limit."; \
+		exit 1; \
+	fi
+	@pad_bytes=$$(( $(OS_IMAGE_SIZE) - $$(wc -c < $@) )); \
+	dd if=/dev/zero bs=1 count=$$pad_bytes >> $@ 2>/dev/null
 
 # --- Build directory ---------------------------------------------------------
 $(BUILD_DIR):

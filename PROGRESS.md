@@ -321,3 +321,39 @@
 - Verified:
   - `make` builds cleanly with `-Wall -Wextra -Werror`.
   - QEMU serial smoke boot passes through scheduler/console loop with expected preemptive demo behavior and no regressions.
+
+## 2026-02-09 02:34:16 +0300 - Codebase Audit (Reviewer Pass 1)
+- Completed: Performed a full audit of bootloader, memory management, interrupts, scheduler/process code, and device/console paths.
+- Validation:
+  - `make clean && make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU serial smoke boot reaches stable console and process demo completion.
+- Reference docs consulted from `docs/core/`:
+  - `Disk_access_using_the_BIOS_(INT_13h).md`
+  - `Detecting_Memory_(x86).md`
+  - `Context_Switching.md`
+  - `Task_State_Segment.md`
+  - `8259_PIC.md`
+- Findings captured for follow-up:
+  - Hard-coded stage2/kernel load size limits can silently truncate future kernels.
+  - Scheduler state transitions are not IRQ-safe in all call paths (reentrancy risk).
+  - TSS `esp0` update path exists but is not wired into task switch flow.
+  - PMM E820 free-frame accounting can drift if firmware reports overlapping ranges.
+  - Bootloader CHS bulk-read path is brittle across BIOS implementations.
+
+## 2026-02-09 02:46:25 +0300 - Audit Hotfixes: Findings #1 and #2
+- Completed: Fixed the two high-priority audit findings requested for immediate remediation.
+- Fix #1 (kernel load hard-cap / silent truncation risk):
+  - `boot/mbr.asm`: replaced single CHS bulk read with INT 13h extensions (AH=41h capability check + AH=42h DAP reads), split into two chunks to avoid 64KB transfer-boundary issues.
+  - `boot/stage2.asm`: replaced fixed 30KB copy constant with `KERNEL_MAX_SECTORS`-driven `KERNEL_COPY_DWORDS`.
+  - `Makefile`: introduced `KERNEL_MAX_SECTORS`/`KERNEL_MAX_BYTES`, passed define to NASM for both boot stages, and added hard build failures when `kernel.bin` or final `os.bin` exceed supported limits.
+  - Removed silent padding fallback (`|| true`) so over-limit images now fail fast with explicit errors.
+- Fix #2 (scheduler reentrancy in mixed IRQ/non-IRQ call paths):
+  - `kernel/process.c`: wrapped `process_yield()` scheduler critical section with `spinlock_irq_save()`/`spinlock_irq_restore()` to block IRQ-time reentry while scheduler global state and context switch state are being mutated.
+- Reference docs consulted from `docs/core/`:
+  - `Disk_access_using_the_BIOS_(INT_13h).md`
+  - `Context_Switching.md`
+  - `Spinlock.md`
+- Verified:
+  - Clean rebuild passes: `make -j4` with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke run reaches stable init + scheduler + console path with expected process completion and PCB dump.
+  - Current image sizing: `kernel.bin` = 16016 bytes, `os.bin` = 65536 bytes.

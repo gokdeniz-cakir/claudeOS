@@ -5,6 +5,7 @@
 
 #include "heap.h"
 #include "serial.h"
+#include "spinlock.h"
 
 static struct process process_table[PROCESS_MAX_COUNT];
 static uint32_t process_next_pid = 1U;
@@ -351,12 +352,17 @@ void process_yield(void)
 {
     int32_t next_slot;
     uint32_t current_slot;
+    uint32_t irq_flags;
     struct process *current;
     struct process *next;
 
     if (process_initialized == 0U) {
         return;
     }
+
+    /* Single-CPU scheduler critical section: prevent IRQ-time reentrancy
+     * while mutating global run-state and performing the stack switch. */
+    irq_flags = spinlock_irq_save();
 
     process_reap_zombie();
 
@@ -368,6 +374,7 @@ void process_yield(void)
         if (current->state == PROCESS_STATE_READY) {
             current->state = PROCESS_STATE_RUNNING;
         }
+        spinlock_irq_restore(irq_flags);
         return;
     }
 
@@ -387,6 +394,7 @@ void process_yield(void)
     process_switch(&current->esp, next->esp);
 
     process_reap_zombie();
+    spinlock_irq_restore(irq_flags);
 }
 
 void process_run_ready(void)
