@@ -88,5 +88,5 @@ void tss_init(void)
 
     write_tss_descriptor(tss_base, tss_limit);
 
-    __asm__ volatile ("ltr %%ax" : : "a"((uint16_t)TSS_SELECTOR));
+    __asm__ volatile ("ltr %%ax" : : "a"((uint16_t)TSS_SELECTOR) : "memory");
 }

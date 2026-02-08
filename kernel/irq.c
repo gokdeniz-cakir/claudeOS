@@ -35,8 +35,17 @@ void irq_handler(struct isr_regs *regs)
     /* Convert interrupt number back to IRQ number (0-15) */
     uint8_t irq = (uint8_t)(regs->int_no - IRQ_BASE);
 
+    if (irq >= IRQ_COUNT) {
+        return;
+    }
+
+    /* Handle PIC spurious IRQ7/IRQ15 before dispatching/EOIing as normal. */
+    if ((irq == 7U || irq == 15U) && pic_is_spurious_irq(irq) != 0U) {
+        return;
+    }
+
     /* Dispatch to registered handler if one exists */
-    if (irq < IRQ_COUNT && irq_handlers[irq] != 0) {
+    if (irq_handlers[irq] != 0) {
         irq_handlers[irq](regs);
     }
 

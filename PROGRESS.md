@@ -255,3 +255,19 @@
   - `make` builds cleanly with `-Wall -Wextra -Werror`.
   - QEMU smoke run (`qemu-system-i386 -display none -serial stdio`) reaches console loop and prints `TSS initialized`.
 - Future note: `esp0` is currently a bootstrap kernel stack; for ring-3 syscall/interrupt return paths, update `esp0` on task switches in later milestones.
+
+## 2026-02-09 01:54:40 +0300 - Interrupt/TSS Hardening Fixes
+- Completed: Fixed two audit findings requested after Task 17.
+- TSS ordering hardening:
+  - Updated `kernel/tss.c` so `ltr` inline assembly includes a `memory` clobber, preventing compiler reordering across TSS/GDT setup writes.
+- Spurious IRQ handling:
+  - Added PIC ISR read helpers in `kernel/pic.c` + declarations in `kernel/pic.h`.
+  - Added `pic_is_spurious_irq()` handling for IRQ7/IRQ15 using ISR checks from OSDev guidance.
+  - Corrected spurious IRQ15 behavior: send EOI to master PIC only, skip slave EOI and IRQ dispatch.
+  - Updated `kernel/irq.c` to detect and early-return on spurious IRQ7/15 before normal dispatch/EOI flow.
+- Reference docs consulted from `docs/core/`:
+  - `8259_PIC.md` (ISR/IRR and spurious IRQ handling)
+  - `Task_State_Segment.md` (TSS load sequencing context)
+- Verified:
+  - `make` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot reaches stable console loop after init and process demo run.

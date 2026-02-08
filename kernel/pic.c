@@ -1,6 +1,15 @@
 #include "pic.h"
 #include "io.h"
 
+#define PIC_READ_ISR    0x0B
+
+static uint16_t pic_get_irq_reg(uint8_t ocw3)
+{
+    outb(PIC1_COMMAND, ocw3);
+    outb(PIC2_COMMAND, ocw3);
+    return (uint16_t)(((uint16_t)inb(PIC2_COMMAND) << 8) | inb(PIC1_COMMAND));
+}
+
 void pic_init(void)
 {
     /* ICW1: begin initialization sequence on both PICs */
@@ -42,6 +51,32 @@ void pic_send_eoi(uint8_t irq)
 
     /* Always send EOI to the master PIC */
     outb(PIC1_COMMAND, PIC_EOI);
+}
+
+uint16_t pic_get_isr(void)
+{
+    return pic_get_irq_reg(PIC_READ_ISR);
+}
+
+uint8_t pic_is_spurious_irq(uint8_t irq)
+{
+    uint16_t isr;
+
+    if (irq == 7U) {
+        isr = pic_get_isr();
+        return (uint8_t)((isr & (1U << 7)) == 0U);
+    }
+
+    if (irq == 15U) {
+        isr = pic_get_isr();
+        if ((isr & (1U << 15)) == 0U) {
+            /* For spurious IRQ15, only master gets EOI. */
+            outb(PIC1_COMMAND, PIC_EOI);
+            return 1U;
+        }
+    }
+
+    return 0U;
 }
 
 void pic_clear_mask(uint8_t irq)

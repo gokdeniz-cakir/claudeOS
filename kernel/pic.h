@@ -29,6 +29,14 @@ void pic_init(void);
 /* Send end-of-interrupt for the given IRQ (0-15) */
 void pic_send_eoi(uint8_t irq);
 
+/* Return combined 16-bit PIC ISR (bit set = IRQ is in service). */
+uint16_t pic_get_isr(void);
+
+/* Check for PIC spurious IRQ7/IRQ15.
+ * Returns 1 for spurious, 0 for real/unsupported IRQ.
+ * For spurious IRQ15, this helper also sends master EOI as required. */
+uint8_t pic_is_spurious_irq(uint8_t irq);
+
 /* Unmask (enable) a specific IRQ line (0-15) */
 void pic_clear_mask(uint8_t irq);
 
