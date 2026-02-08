@@ -271,3 +271,30 @@
 - Verified:
   - `make` builds cleanly with `-Wall -Wextra -Werror`.
   - QEMU serial smoke boot reaches stable console loop after init and process demo run.
+
+## 2026-02-09 02:08:24 +0300 - Phase 4, Task 18: Preemptive Round-Robin Scheduler (PIT-driven)
+- Completed: Added PIT-driven preemptive scheduling on top of existing software context switching.
+- IRQ integration (`kernel/irq.c`):
+  - Added timer quantum accounting (`SCHED_QUANTUM_TICKS = 1`).
+  - Scheduler preemption now triggers from IRQ0 after handler dispatch and after PIC EOI is sent.
+  - This ordering avoids starving future timer IRQs while a context switch is in progress.
+- Process subsystem updates (`kernel/process.c`, `kernel/process.h`):
+  - Added preemption controls:
+    - `process_set_preemption()`
+    - `process_is_preemption_enabled()`
+    - `process_preempt_from_irq()`
+  - Added bootstrap `sti` when preemption is enabled so a fresh process first entered from IRQ context can continue receiving interrupts.
+- Kernel integration (`kernel/kernel.c`):
+  - Demo processes no longer call `process_yield()`, so scheduling is driven by PIT preemption rather than cooperative yields.
+  - Enabled preemption in `kernel_main` via `process_set_preemption(1)` before `sti`.
+  - Kept one-time PCB summary print after demo processes exit (`process_count() == 1`).
+- Reference docs consulted from `docs/core/`:
+  - `Kernel_Multitasking.md`
+  - `Context_Switching.md`
+  - `8259_PIC.md` (EOI/spurious behavior and PIC ISR semantics)
+- Verified:
+  - Clean build: `make` with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke run shows PIT-driven interleaving without cooperative yields:
+    - `demo process A tick` / `demo process B tick` alternate/interleave
+    - both demo processes exit
+    - PCB table returns to `kernel_main` only.

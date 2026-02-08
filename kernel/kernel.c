@@ -14,13 +14,21 @@
 #include "process.h"
 #include "tss.h"
 
+static void demo_delay(void)
+{
+    volatile uint32_t i;
+    for (i = 0U; i < 20000000U; i++) {
+        __asm__ volatile ("" : : : "memory");
+    }
+}
+
 static void demo_process_a(void *arg)
 {
     (void)arg;
     for (uint32_t i = 0; i < 3U; i++) {
         vga_puts("[PROC] demo process A tick.\n");
         serial_puts("[PROC] demo process A tick\n");
-        process_yield();
+        demo_delay();
     }
 }
 
@@ -30,7 +38,7 @@ static void demo_process_b(void *arg)
     for (uint32_t i = 0; i < 3U; i++) {
         vga_puts("[PROC] demo process B tick.\n");
         serial_puts("[PROC] demo process B tick\n");
-        process_yield();
+        demo_delay();
     }
 }
 
@@ -97,17 +105,23 @@ void kernel_main(void)
     (void)process_create_kernel("demo_a", demo_process_a, 0);
     (void)process_create_kernel("demo_b", demo_process_b, 0);
 
-    process_run_ready();
-
-    process_dump_table();
+    process_set_preemption(1U);
+    serial_puts("[PROC] Preemptive scheduler enabled (PIT-driven)\n");
 
     console_init();
 
     /* Enable interrupts */
     __asm__ volatile ("sti");
 
+    uint8_t demo_summary_printed = 0U;
+
     for (;;) {
         char c;
+
+        if (demo_summary_printed == 0U && process_count() == 1U) {
+            process_dump_table();
+            demo_summary_printed = 1U;
+        }
 
         while (keyboard_read_char(&c) != 0) {
             console_handle_char(c);

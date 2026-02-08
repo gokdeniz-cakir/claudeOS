@@ -1,9 +1,13 @@
 #include "irq.h"
 #include "pic.h"
 #include "idt.h"
+#include "process.h"
+
+#define SCHED_QUANTUM_TICKS  1U
 
 /* Dispatch table: one handler slot per IRQ line (0-15) */
 static irq_handler_t irq_handlers[IRQ_COUNT];
+static uint32_t scheduler_tick_accum = 0U;
 
 /* External symbols from irq_stubs.asm */
 extern void irq0(void);
@@ -51,6 +55,15 @@ void irq_handler(struct isr_regs *regs)
 
     /* Send EOI to PIC after handling */
     pic_send_eoi(irq);
+
+    /* PIT-driven round-robin preemption (IRQ0). */
+    if (irq == 0U && process_is_preemption_enabled() != 0U) {
+        scheduler_tick_accum++;
+        if (scheduler_tick_accum >= SCHED_QUANTUM_TICKS) {
+            scheduler_tick_accum = 0U;
+            process_preempt_from_irq();
+        }
+    }
 }
 
 void irq_init(void)
@@ -75,4 +88,6 @@ void irq_init(void)
     idt_set_gate(45, (uint32_t)irq13, KERNEL_CS, IDT_GATE_INT32);
     idt_set_gate(46, (uint32_t)irq14, KERNEL_CS, IDT_GATE_INT32);
     idt_set_gate(47, (uint32_t)irq15, KERNEL_CS, IDT_GATE_INT32);
+
+    scheduler_tick_accum = 0U;
 }

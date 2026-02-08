@@ -11,6 +11,7 @@ static uint32_t process_next_pid = 1U;
 static uint32_t process_current_index = 0U;
 static uint32_t process_total = 0U;
 static uint32_t process_initialized = 0U;
+static uint8_t process_preemption_enabled = 0U;
 static int32_t process_zombie_slot = -1;
 
 extern void process_switch(uint32_t *old_esp, uint32_t new_esp);
@@ -190,6 +191,11 @@ static void process_bootstrap(void)
 
     process_reap_zombie();
 
+    if (process_preemption_enabled != 0U) {
+        /* Fresh tasks may be first entered via IRQ-time context switch. */
+        __asm__ volatile ("sti");
+    }
+
     current = &process_table[process_current_index];
     if (current->entry != 0) {
         current->entry(current->arg);
@@ -244,6 +250,7 @@ void process_init(void)
     process_next_pid = 1U;
     process_current_index = 0U;
     process_total = 0U;
+    process_preemption_enabled = 0U;
     process_zombie_slot = -1;
 
     bootstrap = &process_table[0];
@@ -259,6 +266,25 @@ void process_init(void)
     process_initialized = 1U;
 
     serial_puts("[PROC] Initialized PCB table\n");
+}
+
+void process_set_preemption(uint8_t enabled)
+{
+    process_preemption_enabled = (uint8_t)(enabled != 0U);
+}
+
+uint8_t process_is_preemption_enabled(void)
+{
+    return process_preemption_enabled;
+}
+
+void process_preempt_from_irq(void)
+{
+    if (process_preemption_enabled == 0U || process_initialized == 0U) {
+        return;
+    }
+
+    process_yield();
 }
 
 int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg)

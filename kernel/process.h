@@ -42,6 +42,15 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
  * No-op if no other READY process exists. */
 void process_yield(void);
 
+/* Enable/disable PIT-driven preemptive scheduling. */
+void process_set_preemption(uint8_t enabled);
+
+/* Return 1 when preemptive scheduling is enabled, else 0. */
+uint8_t process_is_preemption_enabled(void);
+
+/* Called from IRQ0 path to preempt current process on quantum expiry. */
+void process_preempt_from_irq(void);
+
 /* Run cooperative switching until no READY processes remain. */
 void process_run_ready(void);
 
