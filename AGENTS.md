@@ -73,15 +73,15 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 11. Kernel heap (kmalloc/kfree) Completed
 
 ### Phase 3: Keyboard & Console 
-12. PS/2 keyboard driver (IRQ1, scancode → ASCII)
-13. VGA text driver with scrolling, cursor
-14. Basic kernel console (type and see output)
+12. PS/2 keyboard driver (IRQ1, scancode → ASCII) - Completed: kernel/keyboard.c, kernel/keyboard.h
+13. VGA text driver with scrolling, cursor - Completed: kernel/vga.c, kernel/vga.h
+14. Basic kernel console (type and see output) - Completed: kernel/console.c, kernel/console.h, kernel/kernel.c
 
 ### Phase 4: Processes & Scheduling 
-15. Process control blocks, kernel-mode processes
-16. Context switching
-17. TSS setup
-18. Preemptive round-robin scheduler (PIT-driven)
+15. Process control blocks, kernel-mode processes - Completed: kernel/process.c, kernel/process.h, kernel/kernel.c
+16. Context switching - Completed: kernel/process.c, kernel/process.h, kernel/process_stubs.asm
+17. TSS setup - Completed: kernel/tss.c, kernel/tss.h, kernel/kernel_entry.asm, kernel/kernel.c
+18. Preemptive round-robin scheduler (PIT-driven) - Completed: kernel/irq.c, kernel/process.c, kernel/process.h, kernel/kernel.c
 19. Spinlocks, basic synchronization
 
 ### Phase 5: User Mode & Syscalls
@@ -104,4 +104,3 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 32. Builtins: ls, cat, echo, clear, help, ps
 33. At least 2-3 standalone userspace programs
 34. Polish, test, create demo script
-
