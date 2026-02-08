@@ -34,6 +34,7 @@ KEYBOARD_SRC   := $(KERNEL_DIR)/keyboard.c
 CONSOLE_SRC    := $(KERNEL_DIR)/console.c
 PROCESS_SRC    := $(KERNEL_DIR)/process.c
 PROCESS_STUBS_SRC := $(KERNEL_DIR)/process_stubs.asm
+TSS_SRC        := $(KERNEL_DIR)/tss.c
 LINKER_SCRIPT  := linker.ld
 
 # --- Build outputs -----------------------------------------------------------
@@ -57,6 +58,7 @@ KEYBOARD_OBJ   := $(BUILD_DIR)/keyboard.o
 CONSOLE_OBJ    := $(BUILD_DIR)/console.o
 PROCESS_OBJ    := $(BUILD_DIR)/process.o
 PROCESS_STUBS_OBJ := $(BUILD_DIR)/process_stubs.o
+TSS_OBJ        := $(BUILD_DIR)/tss.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -155,13 +157,17 @@ $(PROCESS_OBJ): $(PROCESS_SRC) | $(BUILD_DIR)
 $(PROCESS_STUBS_OBJ): $(PROCESS_STUBS_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
 
+# --- Task State Segment setup (ELF object) -----------------------------------
+$(TSS_OBJ): $(TSS_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
                $(PIC_OBJ) $(IRQ_OBJ) $(IRQ_STUBS_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
-               $(PROCESS_STUBS_OBJ)
+               $(PROCESS_STUBS_OBJ) $(TSS_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

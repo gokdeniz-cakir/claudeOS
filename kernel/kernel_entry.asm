@@ -67,6 +67,8 @@ stack_top:
 section .data
 align 8
 
+global kernel_gdt_tss_descriptor
+
 kernel_gdt:
     ; Entry 0: Null descriptor (required)
     dq 0
@@ -88,6 +90,11 @@ kernel_gdt:
     db 0x92                  ; Access: P=1 DPL=0 S=1 E=0 DC=0 RW=1 A=0
     db 0xCF
     db 0x00
+
+kernel_gdt_tss_descriptor:
+    ; Entry 3: TSS descriptor placeholder (selector 0x18)
+    ; Populated at runtime by tss_init().
+    dq 0
 kernel_gdt_end:
 
 kernel_gdt_ptr:

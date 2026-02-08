@@ -237,3 +237,21 @@
     - process interleaving/exits and PCB dump matched expected output
     - console handled sustained key-hold input without freeze
     - line submit and serial mirror logs remained correct.
+
+## 2026-02-09 01:44:19 +0300 - Phase 4, Task 17: TSS Setup
+- Completed: Added protected-mode Task State Segment initialization and task register load for i686.
+- New files: `kernel/tss.c`, `kernel/tss.h`.
+- GDT integration: `kernel/kernel_entry.asm` now reserves a runtime-populated TSS descriptor at selector `0x18`.
+- TSS configuration: `ss0=0x10`, `esp0` points to a dedicated aligned kernel stack, and `iomap_base=sizeof(TSS)`.
+- Descriptor configuration: base/limit set at runtime, access byte `0x89`, byte-granularity flags (`0x0`).
+- Kernel integration: `kernel/kernel.c` now calls `tss_init()` before enabling interrupts and logs `TSS initialized`.
+- Build integration: `Makefile` now compiles and links `kernel/tss.c`.
+- Reference docs consulted from `docs/core/`:
+  - `Task_State_Segment.md`
+  - `GDT_Tutorial.md`
+  - `Getting_to_Ring_3.md`
+  - `Context_Switching.md`
+- Verified:
+  - `make` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU smoke run (`qemu-system-i386 -display none -serial stdio`) reaches console loop and prints `TSS initialized`.
+- Future note: `esp0` is currently a bootstrap kernel stack; for ring-3 syscall/interrupt return paths, update `esp0` on task switches in later milestones.

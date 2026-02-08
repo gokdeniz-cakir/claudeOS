@@ -12,6 +12,7 @@
 #include "keyboard.h"
 #include "console.h"
 #include "process.h"
+#include "tss.h"
 
 static void demo_process_a(void *arg)
 {
@@ -88,6 +89,10 @@ void kernel_main(void)
     process_init();
     vga_puts("Process subsystem initialized.\n");
     serial_puts("Process subsystem initialized\n");
+
+    tss_init();
+    vga_puts("TSS initialized.\n");
+    serial_puts("TSS initialized\n");
 
     (void)process_create_kernel("demo_a", demo_process_a, 0);
     (void)process_create_kernel("demo_b", demo_process_b, 0);
