@@ -26,6 +26,7 @@ extern uint8_t _kernel_end[];
  * Bitmap — 32KB in BSS, one bit per 4KB frame, supports up to 1GB RAM
  * ------------------------------------------------------------------------- */
 static uint8_t pmm_bitmap[PMM_MAX_FRAMES / 8];
+static uint8_t pmm_alloc_bitmap[PMM_MAX_FRAMES / 8];
 
 /* Counters */
 static uint32_t total_frames;
@@ -54,6 +55,23 @@ static inline void pmm_clear_frame(uint32_t idx)
 static inline int pmm_test_frame(uint32_t idx)
 {
     return pmm_bitmap[idx / 8] & (1 << (idx % 8));
+}
+
+/* Mark frame ownership for allocator bookkeeping:
+ * bit=1 means this frame was handed out by pmm_alloc_frame(). */
+static inline void pmm_set_allocated(uint32_t idx)
+{
+    pmm_alloc_bitmap[idx / 8] |= (uint8_t)(1 << (idx % 8));
+}
+
+static inline void pmm_clear_allocated(uint32_t idx)
+{
+    pmm_alloc_bitmap[idx / 8] &= (uint8_t)~(1 << (idx % 8));
+}
+
+static inline int pmm_test_allocated(uint32_t idx)
+{
+    return pmm_alloc_bitmap[idx / 8] & (1 << (idx % 8));
 }
 
 /* -------------------------------------------------------------------------
@@ -108,6 +126,7 @@ void pmm_init(void)
     /* Step 1: Mark all frames as used */
     for (uint32_t i = 0; i < sizeof(pmm_bitmap); i++) {
         pmm_bitmap[i] = 0xFF;
+        pmm_alloc_bitmap[i] = 0x00;
     }
 
     total_frames = PMM_MAX_FRAMES;
@@ -274,6 +293,7 @@ uint32_t pmm_alloc_frame(void)
             }
             if (!pmm_test_frame(frame_idx)) {
                 pmm_set_frame(frame_idx);
+                pmm_set_allocated(frame_idx);
                 free_frames--;
                 return frame_idx * PMM_PAGE_SIZE;
             }
@@ -308,8 +328,10 @@ void pmm_free_frame(uint32_t phys_addr)
 
     uint32_t frame_idx = phys_addr / PMM_PAGE_SIZE;
 
-    /* Only free if currently used (prevent double-free) */
-    if (pmm_test_frame(frame_idx)) {
+    /* Only free frames that were actually handed out by pmm_alloc_frame().
+     * This prevents accidental frees of permanently reserved or foreign frames. */
+    if (pmm_test_frame(frame_idx) && pmm_test_allocated(frame_idx)) {
+        pmm_clear_allocated(frame_idx);
         pmm_clear_frame(frame_idx);
         free_frames++;
     }

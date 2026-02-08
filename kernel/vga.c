@@ -40,18 +40,56 @@ static void vga_scroll(void)
     }
 }
 
+static void vga_clamp_cursor(void)
+{
+    if (vga_row >= VGA_HEIGHT) {
+        vga_row = (uint16_t)(VGA_HEIGHT - 1);
+    }
+    if (vga_col >= VGA_WIDTH) {
+        vga_col = (uint16_t)(VGA_WIDTH - 1);
+    }
+}
+
 void vga_init(void)
 {
     vga_row = 0;
     vga_col = 0;
     vga_attrib = VGA_COLOR_LIGHT_GREY | (VGA_COLOR_BLACK << 4);
+    vga_clear();
+    vga_enable_cursor();
+    vga_update_cursor();
+}
+
+void vga_clear(void)
+{
     uint16_t blank = vga_entry(' ', vga_attrib);
     uint16_t i;
+
     for (i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
         vga_buffer[i] = blank;
     }
-    vga_enable_cursor();
+
+    vga_row = 0;
+    vga_col = 0;
     vga_update_cursor();
+}
+
+void vga_set_cursor(uint16_t row, uint16_t col)
+{
+    vga_row = row;
+    vga_col = col;
+    vga_clamp_cursor();
+    vga_update_cursor();
+}
+
+void vga_get_cursor(uint16_t *row, uint16_t *col)
+{
+    if (row != 0) {
+        *row = vga_row;
+    }
+    if (col != 0) {
+        *col = vga_col;
+    }
 }
 
 void vga_putchar(char c)
@@ -61,6 +99,18 @@ void vga_putchar(char c)
         vga_row++;
     } else if (c == '\r') {
         vga_col = 0;
+    } else if (c == '\b') {
+        if (vga_col > 0) {
+            vga_col--;
+        } else if (vga_row > 0) {
+            vga_row--;
+            vga_col = (uint16_t)(VGA_WIDTH - 1);
+        }
+
+        if (vga_row < VGA_HEIGHT && vga_col < VGA_WIDTH) {
+            uint16_t offset = vga_row * VGA_WIDTH + vga_col;
+            vga_buffer[offset] = vga_entry(' ', vga_attrib);
+        }
     } else if (c == '\t') {
         vga_col = (vga_col + 8) & ~7;
         if (vga_col >= VGA_WIDTH) {

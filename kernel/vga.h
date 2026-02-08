@@ -21,8 +21,11 @@ enum vga_color {
 };
 
 void vga_init(void);
+void vga_clear(void);
 void vga_putchar(char c);
 void vga_puts(const char *str);
 void vga_set_color(uint8_t fg, uint8_t bg);
+void vga_set_cursor(uint16_t row, uint16_t col);
+void vga_get_cursor(uint16_t *row, uint16_t *col);
 
 #endif /* CLAUDE_VGA_H */

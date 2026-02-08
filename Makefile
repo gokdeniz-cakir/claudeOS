@@ -28,6 +28,12 @@ IRQ_SRC        := $(KERNEL_DIR)/irq.c
 IRQ_STUBS_SRC  := $(KERNEL_DIR)/irq_stubs.asm
 PIT_SRC        := $(KERNEL_DIR)/pit.c
 PMM_SRC        := $(KERNEL_DIR)/pmm.c
+PAGING_SRC     := $(KERNEL_DIR)/paging.c
+HEAP_SRC       := $(KERNEL_DIR)/heap.c
+KEYBOARD_SRC   := $(KERNEL_DIR)/keyboard.c
+CONSOLE_SRC    := $(KERNEL_DIR)/console.c
+PROCESS_SRC    := $(KERNEL_DIR)/process.c
+PROCESS_STUBS_SRC := $(KERNEL_DIR)/process_stubs.asm
 LINKER_SCRIPT  := linker.ld
 
 # --- Build outputs -----------------------------------------------------------
@@ -45,6 +51,12 @@ IRQ_OBJ        := $(BUILD_DIR)/irq.o
 IRQ_STUBS_OBJ  := $(BUILD_DIR)/irq_stubs.o
 PIT_OBJ        := $(BUILD_DIR)/pit.o
 PMM_OBJ        := $(BUILD_DIR)/pmm.o
+PAGING_OBJ     := $(BUILD_DIR)/paging.o
+HEAP_OBJ       := $(BUILD_DIR)/heap.o
+KEYBOARD_OBJ   := $(BUILD_DIR)/keyboard.o
+CONSOLE_OBJ    := $(BUILD_DIR)/console.o
+PROCESS_OBJ    := $(BUILD_DIR)/process.o
+PROCESS_STUBS_OBJ := $(BUILD_DIR)/process_stubs.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -119,11 +131,37 @@ $(PIT_OBJ): $(PIT_SRC) | $(BUILD_DIR)
 $(PMM_OBJ): $(PMM_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- Paging helpers (ELF object) --------------------------------------------
+$(PAGING_OBJ): $(PAGING_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Kernel heap allocator (ELF object) -------------------------------------
+$(HEAP_OBJ): $(HEAP_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- PS/2 keyboard driver (ELF object) --------------------------------------
+$(KEYBOARD_OBJ): $(KEYBOARD_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Basic kernel console (ELF object) --------------------------------------
+$(CONSOLE_OBJ): $(CONSOLE_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Process subsystem (ELF object) -----------------------------------------
+$(PROCESS_OBJ): $(PROCESS_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Process stack helper stubs (ELF object from NASM) ----------------------
+$(PROCESS_STUBS_OBJ): $(PROCESS_STUBS_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
                $(PIC_OBJ) $(IRQ_OBJ) $(IRQ_STUBS_OBJ) \
-               $(PIT_OBJ) $(PMM_OBJ)
+               $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
+               $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
+               $(PROCESS_STUBS_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)
