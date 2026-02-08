@@ -6,6 +6,7 @@
 #include "irq.h"
 #include "pic.h"
 #include "serial.h"
+#include "spinlock.h"
 
 #define PS2_DATA_PORT           0x60
 #define PS2_STATUS_PORT         0x64
@@ -58,23 +59,12 @@ static const char scancode_set1_shift[128] = {
 static volatile uint8_t keyboard_head = 0;
 static volatile uint8_t keyboard_tail = 0;
 static char keyboard_buffer[KBD_BUFFER_SIZE];
+static struct spinlock keyboard_buffer_lock = SPINLOCK_INITIALIZER;
 
 static uint8_t keyboard_left_shift = 0;
 static uint8_t keyboard_right_shift = 0;
 static uint8_t keyboard_caps_lock = 0;
 static uint8_t keyboard_extended_prefix = 0;
-
-static inline uint32_t irq_save_disable(void)
-{
-    uint32_t flags;
-    __asm__ volatile ("pushf; pop %0; cli" : "=r"(flags) : : "memory");
-    return flags;
-}
-
-static inline void irq_restore(uint32_t flags)
-{
-    __asm__ volatile ("push %0; popf" : : "r"(flags) : "memory", "cc");
-}
 
 static int ps2_wait_for_write(void)
 {
@@ -140,15 +130,18 @@ static void ps2_flush_output_buffer(void)
 
 static void keyboard_buffer_push(char c)
 {
+    uint32_t flags = spinlock_lock_irqsave(&keyboard_buffer_lock);
     uint8_t head = keyboard_head;
     uint8_t next = (uint8_t)((head + 1u) & KBD_BUFFER_MASK);
 
     if (next == keyboard_tail) {
+        spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
         return; /* Drop keypress when ring buffer is full. */
     }
 
     keyboard_buffer[head] = c;
     keyboard_head = next;
+    spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
 }
 
 static char keyboard_translate_scancode(uint8_t scancode)
@@ -241,6 +234,7 @@ void keyboard_init(void)
     keyboard_right_shift = 0;
     keyboard_caps_lock = 0;
     keyboard_extended_prefix = 0;
+    spinlock_init(&keyboard_buffer_lock);
 
     (void)ps2_write_command(PS2_CMD_DISABLE_PORT1);
     (void)ps2_write_command(PS2_CMD_DISABLE_PORT2);
@@ -276,23 +270,22 @@ void keyboard_init(void)
 int keyboard_read_char(char *out_char)
 {
     uint8_t tail;
-    uint32_t irq_flags;
+    uint32_t flags;
 
     if (out_char == 0) {
         return 0;
     }
 
-    /* Protect head/tail ring-buffer operations from concurrent IRQ1 updates. */
-    irq_flags = irq_save_disable();
+    flags = spinlock_lock_irqsave(&keyboard_buffer_lock);
 
     tail = keyboard_tail;
     if (tail == keyboard_head) {
-        irq_restore(irq_flags);
+        spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
         return 0;
     }
 
     *out_char = keyboard_buffer[tail];
     keyboard_tail = (uint8_t)((tail + 1u) & KBD_BUFFER_MASK);
-    irq_restore(irq_flags);
+    spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
     return 1;
 }

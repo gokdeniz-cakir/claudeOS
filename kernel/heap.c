@@ -2,6 +2,7 @@
 #include "paging.h"
 #include "pmm.h"
 #include "serial.h"
+#include "spinlock.h"
 
 #include <stdint.h>
 
@@ -21,6 +22,7 @@ static struct heap_block *kheap_head;
 static struct heap_block *kheap_tail;
 static uint32_t kheap_top;
 static uint32_t kheap_ready;
+static struct spinlock kheap_lock = SPINLOCK_INITIALIZER;
 
 static uint32_t align_up_u32(uint32_t value, uint32_t alignment)
 {
@@ -181,6 +183,8 @@ static int expand_heap(uint32_t min_bytes)
 
 void kheap_init(void)
 {
+    spinlock_init(&kheap_lock);
+
     kheap_head = 0;
     kheap_tail = 0;
     kheap_top = KHEAP_START;
@@ -198,7 +202,12 @@ void kheap_init(void)
 
 void *kmalloc(size_t size)
 {
-    if (kheap_ready == 0U || size == 0U) {
+    struct heap_block *block;
+    uint32_t request;
+    uint32_t flags;
+    void *result = 0;
+
+    if (size == 0U) {
         return 0;
     }
 
@@ -206,13 +215,18 @@ void *kmalloc(size_t size)
         return 0;
     }
 
-    uint32_t request = (uint32_t)size;
+    request = (uint32_t)size;
     if (request > 0xFFFFFFFFU - (KHEAP_ALIGNMENT - 1U)) {
         return 0;
     }
     request = align_up_u32(request, KHEAP_ALIGNMENT);
 
-    struct heap_block *block = find_fit(request);
+    flags = spinlock_lock_irqsave(&kheap_lock);
+    if (kheap_ready == 0U) {
+        goto out;
+    }
+
+    block = find_fit(request);
 
     while (block == 0) {
         uint32_t top_before = kheap_top;
@@ -220,7 +234,7 @@ void *kmalloc(size_t size)
 
         (void)expand_heap(required);
         if (kheap_top == top_before) {
-            return 0;
+            goto out;
         }
 
         block = find_fit(request);
@@ -228,18 +242,31 @@ void *kmalloc(size_t size)
 
     split_block(block, request);
     block->used = 1U;
+    result = (void *)(uintptr_t)((uint32_t)(uintptr_t)block + (uint32_t)sizeof(struct heap_block));
 
-    return (void *)(uintptr_t)((uint32_t)(uintptr_t)block + (uint32_t)sizeof(struct heap_block));
+out:
+    spinlock_unlock_irqrestore(&kheap_lock, flags);
+    return result;
 }
 
 void kfree(void *ptr)
 {
-    if (kheap_ready == 0U || ptr == 0) {
+    struct heap_block *block;
+    uint32_t flags;
+
+    if (ptr == 0) {
         return;
     }
 
-    struct heap_block *block = find_block_by_payload(ptr);
+    flags = spinlock_lock_irqsave(&kheap_lock);
+    if (kheap_ready == 0U) {
+        spinlock_unlock_irqrestore(&kheap_lock, flags);
+        return;
+    }
+
+    block = find_block_by_payload(ptr);
     if (block == 0 || block->used == 0U) {
+        spinlock_unlock_irqrestore(&kheap_lock, flags);
         return;
     }
 
@@ -249,4 +276,6 @@ void kfree(void *ptr)
     if (block->prev != 0 && block->prev->used == 0U) {
         merge_forward(block->prev);
     }
+
+    spinlock_unlock_irqrestore(&kheap_lock, flags);
 }

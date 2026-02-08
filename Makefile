@@ -35,6 +35,8 @@ CONSOLE_SRC    := $(KERNEL_DIR)/console.c
 PROCESS_SRC    := $(KERNEL_DIR)/process.c
 PROCESS_STUBS_SRC := $(KERNEL_DIR)/process_stubs.asm
 TSS_SRC        := $(KERNEL_DIR)/tss.c
+SPINLOCK_SRC   := $(KERNEL_DIR)/spinlock.c
+SYNC_SRC       := $(KERNEL_DIR)/sync.c
 LINKER_SCRIPT  := linker.ld
 
 # --- Build outputs -----------------------------------------------------------
@@ -59,6 +61,8 @@ CONSOLE_OBJ    := $(BUILD_DIR)/console.o
 PROCESS_OBJ    := $(BUILD_DIR)/process.o
 PROCESS_STUBS_OBJ := $(BUILD_DIR)/process_stubs.o
 TSS_OBJ        := $(BUILD_DIR)/tss.o
+SPINLOCK_OBJ   := $(BUILD_DIR)/spinlock.o
+SYNC_OBJ       := $(BUILD_DIR)/sync.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -161,13 +165,21 @@ $(PROCESS_STUBS_OBJ): $(PROCESS_STUBS_SRC) | $(BUILD_DIR)
 $(TSS_OBJ): $(TSS_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- Spinlock primitives (ELF object) ----------------------------------------
+$(SPINLOCK_OBJ): $(SPINLOCK_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Basic synchronization primitives (ELF object) ---------------------------
+$(SYNC_OBJ): $(SYNC_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
                $(PIC_OBJ) $(IRQ_OBJ) $(IRQ_STUBS_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
-               $(PROCESS_STUBS_OBJ) $(TSS_OBJ)
+               $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

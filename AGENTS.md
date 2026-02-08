@@ -82,7 +82,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 16. Context switching - Completed: kernel/process.c, kernel/process.h, kernel/process_stubs.asm
 17. TSS setup - Completed: kernel/tss.c, kernel/tss.h, kernel/kernel_entry.asm, kernel/kernel.c
 18. Preemptive round-robin scheduler (PIT-driven) - Completed: kernel/irq.c, kernel/process.c, kernel/process.h, kernel/kernel.c
-19. Spinlocks, basic synchronization
+19. Spinlocks, basic synchronization - Completed: kernel/spinlock.c, kernel/spinlock.h, kernel/sync.c, kernel/sync.h
 
 ### Phase 5: User Mode & Syscalls
 20. Ring 0 → Ring 3 transition

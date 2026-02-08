@@ -298,3 +298,26 @@
     - `demo process A tick` / `demo process B tick` alternate/interleave
     - both demo processes exit
     - PCB table returns to `kernel_main` only.
+
+## 2026-02-09 02:20:53 +0300 - Phase 4, Task 19: Spinlocks and Basic Synchronization
+- Completed: Added reusable spinlock and synchronization primitives for preemptive kernel paths.
+- New primitives:
+  - `kernel/spinlock.h`, `kernel/spinlock.c`
+    - `spinlock_lock`, `spinlock_try_lock`, `spinlock_unlock`
+    - IRQ-safe helpers: `spinlock_irq_save/restore`, `spinlock_lock_irqsave`, `spinlock_unlock_irqrestore`
+  - `kernel/sync.h`, `kernel/sync.c`
+    - Counting semaphore: `semaphore_init`, `semaphore_wait`, `semaphore_signal`, `semaphore_value`
+    - Mutex wrapper: `mutex_init`, `mutex_lock`, `mutex_unlock`
+- Runtime integration:
+  - `kernel/heap.c`: added global heap spinlock; `kmalloc`/`kfree` now execute under IRQ-safe lock to prevent allocator metadata corruption under preemption.
+  - `kernel/keyboard.c`: replaced manual IRQ flag save/restore around ring-buffer operations with shared spinlock helpers.
+- Build integration:
+  - `Makefile` updated to compile and link `spinlock.c` and `sync.c`.
+- Reference docs consulted from `docs/core/`:
+  - `Spinlock.md`
+  - `Semaphore.md`
+  - `Kernel_Multitasking.md`
+  - `Context_Switching.md`
+- Verified:
+  - `make` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot passes through scheduler/console loop with expected preemptive demo behavior and no regressions.
