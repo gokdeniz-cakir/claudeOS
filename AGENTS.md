@@ -70,7 +70,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 8. PIT timer interrupt (system tick) - Completed: kernel/pit.c, kernel/pit.h, pic_clear_mask added
 9. Physical memory manager (detect memory via BIOS E820, bitmap allocator) - Completed: boot/stage2.asm (E820), kernel/pmm.c, kernel/pmm.h
 10. Paging enabled, higher-half kernel mapped - Completed: kernel/kernel_entry.asm, linker.ld, boot/stage2.asm
-11. Kernel heap (kmalloc/kfree)
+11. Kernel heap (kmalloc/kfree) Completed
 
 ### Phase 3: Keyboard & Console 
 12. PS/2 keyboard driver (IRQ1, scancode → ASCII)

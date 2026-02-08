@@ -233,3 +233,7 @@
     - both processes exit
     - PCB dump returns to only `kernel_main` RUNNING
   - Console still initializes after process demo run.
+  - Interactive `make run` validation on `2026-02-09 01:39:21 +0300` passed:
+    - process interleaving/exits and PCB dump matched expected output
+    - console handled sustained key-hold input without freeze
+    - line submit and serial mirror logs remained correct.
