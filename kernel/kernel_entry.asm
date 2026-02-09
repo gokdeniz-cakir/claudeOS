@@ -95,6 +95,24 @@ kernel_gdt_tss_descriptor:
     ; Entry 3: TSS descriptor placeholder (selector 0x18)
     ; Populated at runtime by tss_init().
     dq 0
+
+    ; Entry 4: User code segment (selector 0x20)
+    ; Base=0, Limit=4GB, 32-bit, DPL=3, Execute/Read
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 0xFA                  ; Access: P=1 DPL=3 S=1 E=1 DC=0 RW=1 A=0
+    db 0xCF                  ; Flags: G=1 D=1, Limit[19:16]=0xF
+    db 0x00
+
+    ; Entry 5: User data segment (selector 0x28)
+    ; Base=0, Limit=4GB, 32-bit, DPL=3, Read/Write
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 0xF2                  ; Access: P=1 DPL=3 S=1 E=0 DC=0 RW=1 A=0
+    db 0xCF
+    db 0x00
 kernel_gdt_end:
 
 kernel_gdt_ptr:

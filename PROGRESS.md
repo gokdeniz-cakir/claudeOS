@@ -357,3 +357,34 @@
   - Clean rebuild passes: `make -j4` with `-Wall -Wextra -Werror`.
   - QEMU serial smoke run reaches stable init + scheduler + console path with expected process completion and PCB dump.
   - Current image sizing: `kernel.bin` = 16016 bytes, `os.bin` = 65536 bytes.
+
+## 2026-02-09 03:01:42 +0300 - Phase 5, Task 20: Ring 0 -> Ring 3 Transition
+- Completed: Added a controlled ring3 transition path using the `iret` method while keeping default boot behavior unchanged.
+- GDT updates:
+  - `kernel/kernel_entry.asm` now includes user-mode flat segments:
+    - User code descriptor at selector `0x20` (DPL=3, access `0xFA`)
+    - User data descriptor at selector `0x28` (DPL=3, access `0xF2`)
+  - Existing TSS descriptor remains at selector `0x18`.
+- User-mode transition module:
+  - New files `kernel/usermode.h` and `kernel/usermode.c`.
+  - Implements a minimal ring3 probe:
+    - maps a user code page and user stack page with `PAGE_USER`
+    - sets up an `iret` frame with ring3 selectors (`CS=0x23`, `SS=0x2B`)
+    - enters ring3 and intentionally executes `cli` to trigger `#GP` as proof of user privilege level.
+  - Updates `tss.esp0` from current kernel ESP immediately before transition.
+- Console integration:
+  - `kernel/console.c` now supports simple commands:
+    - `help` (shows command list)
+    - `ring3test` (launches ring3 transition probe)
+  - Default `make run` flow remains unchanged unless `ring3test` is entered.
+- Build integration:
+  - `Makefile` now compiles and links `kernel/usermode.c`.
+- Reference docs consulted from `docs/core/`:
+  - `Getting_to_Ring_3.md`
+  - `GDT_Tutorial.md`
+  - `Task_State_Segment.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot (`make run`) still reaches stable scheduler + console path.
+  - Image sizing remains within bootloader cap (`kernel.bin` = 16888 bytes, `os.bin` = 65536 bytes).
+  - Full `ring3test` interaction requires manual keyboard input in QEMU window (not automatable via serial-only run).

@@ -85,7 +85,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 19. Spinlocks, basic synchronization - Completed: kernel/spinlock.c, kernel/spinlock.h, kernel/sync.c, kernel/sync.h
 
 ### Phase 5: User Mode & Syscalls
-20. Ring 0 → Ring 3 transition
+20. Ring 0 → Ring 3 transition - Completed: kernel/kernel_entry.asm, kernel/usermode.c, kernel/usermode.h, kernel/console.c
 21. TSS stack switching on syscall
 22. INT 0x80 syscall interface
 23. Basic syscalls: write, exit, sbrk
