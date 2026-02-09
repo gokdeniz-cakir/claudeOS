@@ -9,6 +9,8 @@
 #define SYSCALL_OPEN     4U
 #define SYSCALL_READ     5U
 #define SYSCALL_CLOSE    6U
+#define SYSCALL_FORK     7U
+#define SYSCALL_EXEC     8U
 
 #define SYSCALL_O_READ   0x1U
 #define SYSCALL_O_WRITE  0x2U

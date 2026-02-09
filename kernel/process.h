@@ -6,6 +6,7 @@
 #define PROCESS_MAX_COUNT           16U
 #define PROCESS_NAME_MAX_LEN        24U
 #define PROCESS_KERNEL_STACK_SIZE   4096U
+#define PROCESS_IMAGE_PATH_MAX      128U
 
 enum process_state {
     PROCESS_STATE_UNUSED = 0,
@@ -29,6 +30,7 @@ struct process {
     process_entry_t entry;
     void *arg;
     uint32_t user_break;
+    char user_image_path[PROCESS_IMAGE_PATH_MAX];
     char name[PROCESS_NAME_MAX_LEN];
 };
 
@@ -67,6 +69,8 @@ uint32_t process_user_heap_base(void);
 uint32_t process_user_heap_limit(void);
 int process_get_current_user_break(uint32_t *value);
 int process_set_current_user_break(uint32_t value);
+int process_get_current_image_path(char *path, uint32_t path_len);
+int process_set_current_image_path(const char *path);
 
 /* Access process metadata. */
 const struct process *process_get_current(void);

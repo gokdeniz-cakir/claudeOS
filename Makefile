@@ -49,6 +49,7 @@ INITRD_SRC     := $(KERNEL_DIR)/initrd.c
 ATA_SRC        := $(KERNEL_DIR)/ata.c
 FAT32_SRC      := $(KERNEL_DIR)/fat32.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
+FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
 LINKER_SCRIPT  := linker.ld
 INITRD_DIR     := initrd
 INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
@@ -90,6 +91,11 @@ FAT32_OBJ      := $(BUILD_DIR)/fat32.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
 ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
+FORK_EXEC_DEMO_OBJ := $(BUILD_DIR)/fork_exec_demo.o
+FORK_EXEC_DEMO_ELF := $(BUILD_DIR)/fork_exec_demo.elf
+FORK_EXEC_DEMO_BLOB_OBJ := $(BUILD_DIR)/fork_exec_demo_blob.o
+INITRD_ROOT    := $(BUILD_DIR)/initrd_root
+INITRD_ROOT_STAMP := $(INITRD_ROOT)/.stamp
 INITRD_TAR     := $(BUILD_DIR)/initrd.tar
 INITRD_BLOB_OBJ := $(BUILD_DIR)/initrd_blob.o
 FAT32_IMG      := $(BUILD_DIR)/fat32.img
@@ -251,9 +257,25 @@ $(ELF_DEMO_ELF): $(ELF_DEMO_OBJ) | $(BUILD_DIR)
 $(ELF_DEMO_BLOB_OBJ): $(ELF_DEMO_ELF) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
+$(FORK_EXEC_DEMO_OBJ): $(FORK_EXEC_DEMO_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(FORK_EXEC_DEMO_ELF): $(FORK_EXEC_DEMO_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x0804C000 -e _start -o $@ $<
+
+$(FORK_EXEC_DEMO_BLOB_OBJ): $(FORK_EXEC_DEMO_ELF) | $(BUILD_DIR)
+	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
+
 # --- Embedded initrd tar image build chain -----------------------------------
-$(INITRD_TAR): $(INITRD_INPUTS) | $(BUILD_DIR)
-	tar --format=ustar -cf $@ -C $(INITRD_DIR) .
+$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) | $(BUILD_DIR)
+	rm -rf $(INITRD_ROOT)
+	mkdir -p $(INITRD_ROOT)
+	cp -R $(INITRD_DIR)/. $(INITRD_ROOT)/
+	cp $(ELF_DEMO_ELF) $(INITRD_ROOT)/elf_demo.elf
+	touch $@
+
+$(INITRD_TAR): $(INITRD_ROOT_STAMP) | $(BUILD_DIR)
+	tar --format=ustar -cf $@ -C $(INITRD_ROOT) .
 
 $(INITRD_BLOB_OBJ): $(INITRD_TAR) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
@@ -271,7 +293,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
                $(ELF_OBJ) $(VFS_OBJ) $(INITRD_OBJ) $(ATA_OBJ) $(FAT32_OBJ) \
-               $(ELF_DEMO_BLOB_OBJ) $(INITRD_BLOB_OBJ)
+               $(ELF_DEMO_BLOB_OBJ) $(FORK_EXEC_DEMO_BLOB_OBJ) $(INITRD_BLOB_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

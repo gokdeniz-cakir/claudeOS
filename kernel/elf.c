@@ -3,11 +3,14 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "heap.h"
 #include "paging.h"
 #include "pmm.h"
 #include "process.h"
 #include "serial.h"
+#include "spinlock.h"
 #include "usermode.h"
+#include "vfs.h"
 #include "vga.h"
 
 #define ELF_EI_NIDENT           16U
@@ -23,9 +26,16 @@
 #define ELF_USER_STACK_PAGE     0x0BFF0000U
 #define ELF_USER_STACK_TOP      (ELF_USER_STACK_PAGE + PAGE_SIZE)
 #define ELF_MAX_MAPPED_PAGES    1024U
+#define ELF_MAX_FILE_SIZE       (1024U * 1024U)
+#define ELF_DEMO_VFS_PATH       "/elf_demo.elf"
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
+static uint32_t elf_active_pages[ELF_MAX_MAPPED_PAGES];
+static uint32_t elf_active_count = 0U;
+static uint32_t elf_previous_active_pages[ELF_MAX_MAPPED_PAGES];
+static uint32_t elf_previous_active_count = 0U;
+static struct spinlock elf_loader_lock = SPINLOCK_INITIALIZER;
 
 struct elf32_ehdr {
     uint8_t e_ident[ELF_EI_NIDENT];
@@ -57,6 +67,8 @@ struct elf32_phdr {
 
 extern const uint8_t _binary_build_elf_demo_elf_start[];
 extern const uint8_t _binary_build_elf_demo_elf_end[];
+extern const uint8_t _binary_build_fork_exec_demo_elf_start[];
+extern const uint8_t _binary_build_fork_exec_demo_elf_end[];
 
 static uint32_t align_up_u32(uint32_t value, uint32_t alignment)
 {
@@ -100,8 +112,38 @@ static void cleanup_mapped_pages(const uint32_t *mapped_pages, uint32_t mapped_c
     }
 }
 
-int elf_load_user_image(const uint8_t *image, uint32_t image_size,
-                        struct elf_user_image *loaded)
+static void remember_previous_active_pages(void)
+{
+    uint32_t i;
+
+    elf_previous_active_count = elf_active_count;
+    for (i = 0U; i < elf_active_count; i++) {
+        elf_previous_active_pages[i] = elf_active_pages[i];
+    }
+}
+
+static void drop_previous_active_pages_not_reused(const uint32_t *mapped_pages,
+                                                  uint32_t mapped_count)
+{
+    uint32_t i;
+
+    for (i = 0U; i < elf_previous_active_count; i++) {
+        uint32_t page = elf_previous_active_pages[i];
+        uint32_t phys;
+
+        if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) != 0U) {
+            continue;
+        }
+
+        phys = paging_unmap_page(page);
+        if (phys != 0U) {
+            pmm_free_frame(phys);
+        }
+    }
+}
+
+static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
+                                      struct elf_user_image *loaded)
 {
     const struct elf32_ehdr *ehdr;
     const struct elf32_phdr *phdr_table;
@@ -113,6 +155,8 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
     if (image == 0 || loaded == 0 || image_size < sizeof(struct elf32_ehdr)) {
         return -1;
     }
+
+    remember_previous_active_pages();
 
     ehdr = (const struct elf32_ehdr *)image;
 
@@ -182,20 +226,29 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
 
             if (existing_phys != 0U) {
                 if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) == 0U) {
-                    cleanup_mapped_pages(mapped_pages, mapped_count);
-                    return -1;
-                }
-
-                /* Overlapping PT_LOAD segments may require stronger perms later. */
-                if ((copy_flags & PAGE_WRITABLE) != 0U) {
-                    if (paging_or_page_flags(page, PAGE_USER | PAGE_WRITABLE) != 0) {
+                    if (page_was_mapped_by_loader(elf_previous_active_pages,
+                                                  elf_previous_active_count,
+                                                  page) == 0U) {
                         cleanup_mapped_pages(mapped_pages, mapped_count);
                         return -1;
                     }
-                }
 
-                page += PAGE_SIZE;
-                continue;
+                    existing_phys = paging_unmap_page(page);
+                    if (existing_phys != 0U) {
+                        pmm_free_frame(existing_phys);
+                    }
+                } else {
+                    /* Overlapping PT_LOAD segments may require stronger perms later. */
+                    if ((copy_flags & PAGE_WRITABLE) != 0U) {
+                        if (paging_or_page_flags(page, PAGE_USER | PAGE_WRITABLE) != 0) {
+                            cleanup_mapped_pages(mapped_pages, mapped_count);
+                            return -1;
+                        }
+                    }
+
+                    page += PAGE_SIZE;
+                    continue;
+                }
             }
 
             if (mapped_count >= ELF_MAX_MAPPED_PAGES) {
@@ -235,8 +288,19 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
     }
 
     if (paging_get_phys_addr(ELF_USER_STACK_PAGE) != 0U) {
-        cleanup_mapped_pages(mapped_pages, mapped_count);
-        return -1;
+        uint32_t stack_existing;
+
+        if (page_was_mapped_by_loader(elf_previous_active_pages,
+                                      elf_previous_active_count,
+                                      ELF_USER_STACK_PAGE) == 0U) {
+            cleanup_mapped_pages(mapped_pages, mapped_count);
+            return -1;
+        }
+
+        stack_existing = paging_unmap_page(ELF_USER_STACK_PAGE);
+        if (stack_existing != 0U) {
+            pmm_free_frame(stack_existing);
+        }
     }
 
     if (mapped_count >= ELF_MAX_MAPPED_PAGES) {
@@ -267,9 +331,73 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
         }
     }
 
+    drop_previous_active_pages_not_reused(mapped_pages, mapped_count);
+
+    elf_active_count = mapped_count;
+    for (i = 0U; i < mapped_count; i++) {
+        elf_active_pages[i] = mapped_pages[i];
+    }
+
     loaded->entry = ehdr->e_entry;
     loaded->stack_top = ELF_USER_STACK_TOP;
     return 0;
+}
+
+int elf_load_user_image(const uint8_t *image, uint32_t image_size,
+                        struct elf_user_image *loaded)
+{
+    uint32_t irq_flags;
+    int rc;
+
+    irq_flags = spinlock_lock_irqsave(&elf_loader_lock);
+    rc = elf_load_user_image_locked(image, image_size, loaded);
+    spinlock_unlock_irqrestore(&elf_loader_lock, irq_flags);
+    return rc;
+}
+
+int elf_load_user_image_from_vfs(const char *path, struct elf_user_image *loaded)
+{
+    struct vfs_node node;
+    uint8_t *image;
+    uint32_t total;
+    int32_t fd;
+    int rc;
+
+    if (path == 0 || loaded == 0) {
+        return -1;
+    }
+
+    if (vfs_resolve(path, &node) != VFS_OK || node.type != VFS_NODE_FILE ||
+        node.size == 0U || node.size > ELF_MAX_FILE_SIZE) {
+        return -1;
+    }
+
+    image = (uint8_t *)kmalloc(node.size);
+    if (image == 0) {
+        return -1;
+    }
+
+    fd = vfs_open(path, VFS_OPEN_READ);
+    if (fd < 0) {
+        kfree(image);
+        return -1;
+    }
+
+    total = 0U;
+    while (total < node.size) {
+        int32_t got = vfs_read(fd, image + total, node.size - total);
+        if (got <= 0) {
+            (void)vfs_close(fd);
+            kfree(image);
+            return -1;
+        }
+        total += (uint32_t)got;
+    }
+
+    (void)vfs_close(fd);
+    rc = elf_load_user_image(image, node.size, loaded);
+    kfree(image);
+    return rc;
 }
 
 void elf_run_embedded_test(void)
@@ -291,11 +419,45 @@ void elf_run_embedded_test(void)
         return;
     }
 
+    (void)process_set_current_image_path(ELF_DEMO_VFS_PATH);
     (void)process_set_current_user_break(process_user_heap_base());
     process_refresh_tss_stack();
 
     vga_puts("[ELF] loaded embedded ELF (ring3 jump).\n");
     serial_puts("[ELF] loaded embedded ELF (ring3 jump)\n");
+
+    usermode_enter_ring3(loaded.entry, loaded.stack_top);
+}
+
+void elf_run_fork_exec_test(void)
+{
+    struct elf_user_image loaded;
+    uint32_t image_size;
+
+    image_size = (uint32_t)(uintptr_t)(_binary_build_fork_exec_demo_elf_end -
+                                       _binary_build_fork_exec_demo_elf_start);
+    if (image_size == 0U) {
+        vga_puts("[ELF] fork/exec probe missing.\n");
+        serial_puts("[ELF] fork/exec probe missing\n");
+        return;
+    }
+
+    if (elf_load_user_image(_binary_build_fork_exec_demo_elf_start, image_size, &loaded) != 0) {
+        vga_puts("[ELF] fork/exec probe load failed.\n");
+        serial_puts("[ELF] fork/exec probe load failed\n");
+        return;
+    }
+
+    /*
+     * Basic fork semantics in this phase are spawn-like: child task execs the
+     * caller's recorded image path from VFS.
+     */
+    (void)process_set_current_image_path(ELF_DEMO_VFS_PATH);
+    (void)process_set_current_user_break(process_user_heap_base());
+    process_refresh_tss_stack();
+
+    vga_puts("[ELF] loaded fork+exec probe (ring3 jump).\n");
+    serial_puts("[ELF] loaded fork+exec probe (ring3 jump)\n");
 
     usermode_enter_ring3(loaded.entry, loaded.stack_top);
 }

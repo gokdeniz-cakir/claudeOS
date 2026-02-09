@@ -2,10 +2,13 @@
 
 #include <stdint.h>
 
+#include "elf.h"
+#include "heap.h"
 #include "paging.h"
 #include "pmm.h"
 #include "process.h"
 #include "serial.h"
+#include "usermode.h"
 #include "vfs.h"
 #include "vga.h"
 
@@ -17,6 +20,10 @@
 #define USER_KERNEL_SPLIT    0xC0000000U
 
 static uint8_t syscall_trace_once = 0U;
+
+struct fork_child_exec_context {
+    char path[PROCESS_IMAGE_PATH_MAX];
+};
 
 static uint32_t align_up_u32(uint32_t value, uint32_t alignment)
 {
@@ -105,6 +112,57 @@ static int32_t syscall_copy_user_cstring(uint32_t user_addr, char *dst,
 
     dst[dst_size - 1U] = '\0';
     return -1;
+}
+
+static void syscall_copy_kernel_cstring(char *dst, uint32_t dst_size, const char *src)
+{
+    uint32_t i = 0U;
+
+    if (dst == 0 || dst_size == 0U) {
+        return;
+    }
+
+    if (src == 0) {
+        dst[0] = '\0';
+        return;
+    }
+
+    while (i + 1U < dst_size && src[i] != '\0') {
+        dst[i] = src[i];
+        i++;
+    }
+
+    dst[i] = '\0';
+}
+
+static void syscall_fork_child_entry(void *arg)
+{
+    struct fork_child_exec_context *ctx = (struct fork_child_exec_context *)arg;
+    struct elf_user_image loaded;
+    char path[PROCESS_IMAGE_PATH_MAX];
+
+    if (ctx == 0) {
+        return;
+    }
+
+    syscall_copy_kernel_cstring(path, sizeof(path), ctx->path);
+    kfree(ctx);
+
+    if (path[0] == '\0') {
+        return;
+    }
+
+    if (elf_load_user_image_from_vfs(path, &loaded) != 0) {
+        serial_puts("[PROC] fork child exec load failed\n");
+        return;
+    }
+
+    (void)process_set_current_image_path(path);
+    (void)process_set_current_user_break(process_user_heap_base());
+    process_refresh_tss_stack();
+
+    serial_puts("[PROC] fork child entering user image\n");
+    usermode_enter_ring3(loaded.entry, loaded.stack_top);
 }
 
 static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
@@ -197,6 +255,52 @@ static int32_t syscall_close(uint32_t fd)
     }
 
     return 0;
+}
+
+static int32_t syscall_fork(void)
+{
+    char current_path[PROCESS_IMAGE_PATH_MAX];
+    struct fork_child_exec_context *ctx;
+    int32_t pid;
+
+    if (process_get_current_image_path(current_path, sizeof(current_path)) != 0 ||
+        current_path[0] == '\0') {
+        return -1;
+    }
+
+    ctx = (struct fork_child_exec_context *)kmalloc(sizeof(*ctx));
+    if (ctx == 0) {
+        return -1;
+    }
+
+    syscall_copy_kernel_cstring(ctx->path, sizeof(ctx->path), current_path);
+    pid = process_create_kernel("fork_user", syscall_fork_child_entry, ctx);
+    if (pid < 0) {
+        kfree(ctx);
+        return -1;
+    }
+
+    return pid;
+}
+
+static uint32_t syscall_exec(uint32_t user_path)
+{
+    struct elf_user_image loaded;
+    char kernel_path[PROCESS_IMAGE_PATH_MAX];
+
+    if (syscall_copy_user_cstring(user_path, kernel_path, sizeof(kernel_path)) != 0) {
+        return SYSCALL_RET_EINVAL;
+    }
+
+    if (elf_load_user_image_from_vfs(kernel_path, &loaded) != 0) {
+        return SYSCALL_RET_EINVAL;
+    }
+
+    (void)process_set_current_image_path(kernel_path);
+    (void)process_set_current_user_break(process_user_heap_base());
+    process_refresh_tss_stack();
+
+    usermode_enter_ring3(loaded.entry, loaded.stack_top);
 }
 
 static uint32_t syscall_sbrk(int32_t increment)
@@ -311,6 +415,10 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return (uint32_t)(int32_t)syscall_read(arg0, arg1, arg2);
         case SYSCALL_CLOSE:
             return (uint32_t)(int32_t)syscall_close(arg0);
+        case SYSCALL_FORK:
+            return (uint32_t)(int32_t)syscall_fork();
+        case SYSCALL_EXEC:
+            return syscall_exec(arg0);
         default:
             return SYSCALL_RET_ENOSYS;
     }

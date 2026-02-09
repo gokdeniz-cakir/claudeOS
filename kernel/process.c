@@ -170,6 +170,7 @@ static void release_process_slot(uint32_t index)
     proc->entry = 0;
     proc->arg = 0;
     proc->user_break = PROCESS_USER_HEAP_BASE;
+    proc->user_image_path[0] = '\0';
     proc->name[0] = '\0';
 
     if (process_total > 0U) {
@@ -272,6 +273,7 @@ void process_init(void)
         process_table[i].entry = 0;
         process_table[i].arg = 0;
         process_table[i].user_break = PROCESS_USER_HEAP_BASE;
+        process_table[i].user_image_path[0] = '\0';
         process_table[i].name[0] = '\0';
     }
 
@@ -289,6 +291,7 @@ void process_init(void)
     bootstrap->eip = 0U;
     bootstrap->cr3 = read_cr3();
     bootstrap->user_break = PROCESS_USER_HEAP_BASE;
+    bootstrap->user_image_path[0] = '\0';
     copy_name(bootstrap->name, "kernel_main", PROCESS_NAME_MAX_LEN);
 
     process_total = 1U;
@@ -364,6 +367,7 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     proc->entry = entry;
     proc->arg = arg;
     proc->user_break = PROCESS_USER_HEAP_BASE;
+    proc->user_image_path[0] = '\0';
     copy_name(proc->name, name, PROCESS_NAME_MAX_LEN);
 
     process_total++;
@@ -529,6 +533,35 @@ int process_set_current_user_break(uint32_t value)
 
     irq_flags = spinlock_irq_save();
     process_table[process_current_index].user_break = value;
+    spinlock_irq_restore(irq_flags);
+    return 0;
+}
+
+int process_get_current_image_path(char *path, uint32_t path_len)
+{
+    uint32_t irq_flags;
+
+    if (path == 0 || path_len == 0U || process_initialized == 0U) {
+        return -1;
+    }
+
+    irq_flags = spinlock_irq_save();
+    copy_name(path, process_table[process_current_index].user_image_path, path_len);
+    spinlock_irq_restore(irq_flags);
+    return 0;
+}
+
+int process_set_current_image_path(const char *path)
+{
+    uint32_t irq_flags;
+
+    if (path == 0 || process_initialized == 0U) {
+        return -1;
+    }
+
+    irq_flags = spinlock_irq_save();
+    copy_name(process_table[process_current_index].user_image_path, path,
+              PROCESS_IMAGE_PATH_MAX);
     spinlock_irq_restore(irq_flags);
     return 0;
 }

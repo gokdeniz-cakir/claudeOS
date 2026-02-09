@@ -771,3 +771,47 @@
     - user-space `open/read/close` succeeds and prints FAT32 file contents from ring3:
       - `Hello from ClaudeOS FAT32 via ATA PIO.`
     - test ends with the expected ring3 `#GP` (intentional `cli`), preserving prior validation behavior.
+
+## 2026-02-09 14:37:38 +0300 - Phase 6, Task 29: Basic `fork` + `exec`
+- Completed: Added baseline `fork`/`exec` syscalls and an end-to-end ring3 validation flow.
+- Syscall API updates:
+  - `kernel/syscall.h`: added
+    - `SYSCALL_FORK = 7`
+    - `SYSCALL_EXEC = 8`
+  - `kernel/syscall.c`:
+    - `fork()` now creates a child kernel process that performs a user-image load from the caller's recorded image path and enters ring3.
+    - `exec(path)` loads a new ELF image from VFS and transitions the current process to that user entry point.
+    - Added process image-path plumbing and child exec context handling for fork path.
+- Process metadata updates:
+  - `kernel/process.h` / `kernel/process.c`:
+    - Added per-process `user_image_path` state.
+    - Added:
+      - `process_get_current_image_path()`
+      - `process_set_current_image_path()`
+- ELF/runtime integration:
+  - `kernel/elf.c` / `kernel/elf.h`:
+    - Added VFS ELF loader helper: `elf_load_user_image_from_vfs()`.
+    - Added embedded ring3 probe `elf_run_fork_exec_test()` for Task 29.
+    - Added loader serialization lock around `elf_load_user_image()` to avoid concurrent loader scratch/global-mapping races during preemptive scheduling.
+    - `elf_run_embedded_test()` now records current user image path (`/elf_demo.elf`) for fork compatibility.
+  - `kernel/console.c`:
+    - Added `forkexec` command and updated `help`.
+- Build/initrd integration:
+  - Added `user/fork_exec_demo.asm` embedded user probe binary.
+  - `Makefile` now builds `fork_exec_demo.elf` and embeds it in kernel.
+  - `Makefile` now stages initrd content through `build/initrd_root/` and injects `build/elf_demo.elf` as `/elf_demo.elf` so `exec`/fork-child image loads can resolve via VFS.
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `ELF.md`
+  - `Kernel_Multitasking.md`
+  - `Processes_and_Threads.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - Headless QEMU `sendkey` automation for `forkexec` confirms:
+    - console dispatch (`[CONSOLE] forkexec`)
+    - fork child creation (`[PROC] Created kernel process pid=... name=fork_user`)
+    - child exec handoff (`[PROC] fork child entering user image`)
+    - parent exec handoff into `/elf_demo.elf` syscall path (`[ELF] hello from embedded user ELF`)
+    - expected ring3 terminal `#GP` from bootstrap-path user ELF test.
+- Scope note:
+  - Current `fork()` is intentionally basic (spawn-like) under the shared-CR3 model; full POSIX-style address-space clone semantics are deferred with Task 29 follow-up audit items (`user mapping reclamation` and `per-process address-space isolation`).
