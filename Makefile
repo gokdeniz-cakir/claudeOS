@@ -67,6 +67,7 @@ INITRD_DIR     := initrd
 INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
 TOOLS_DIR      := tools
 FAT32_IMG_TOOL := $(TOOLS_DIR)/mkfat32_image.py
+TASK34_DEMO_SCRIPT := $(TOOLS_DIR)/run_task34_demo.sh
 
 # --- Build outputs -----------------------------------------------------------
 MBR_BIN        := $(BUILD_DIR)/mbr.bin
@@ -146,7 +147,7 @@ KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
 
 # --- Phony targets -----------------------------------------------------------
-.PHONY: all run clean
+.PHONY: all run demo clean
 
 # --- Default target ----------------------------------------------------------
 all: $(OS_BIN)
@@ -407,6 +408,9 @@ $(BUILD_DIR):
 # --- Run in QEMU -------------------------------------------------------------
 run: $(OS_BIN) $(FAT32_IMG)
 	$(QEMU) $(QEMUFLAGS)
+
+demo: $(OS_BIN) $(FAT32_IMG)
+	bash $(TASK34_DEMO_SCRIPT)
 
 # --- Clean -------------------------------------------------------------------
 clean:

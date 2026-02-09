@@ -103,4 +103,4 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 31. Shell as a userspace process - Completed: user/shell.c, user/libc/*, kernel/console.c, kernel/elf.c, kernel/elf.h, Makefile
 32. Builtins: ls, cat, echo, clear, help, ps - Completed: user/shell.c, user/libc/syscall.c, user/libc/include/unistd.h, kernel/syscall.c, kernel/syscall.h
 33. At least 2-3 standalone userspace programs - Completed: user/uhello.asm, user/ucat.asm, user/uexec.asm, kernel/console.c, kernel/elf.c, kernel/elf.h, user/shell.c, Makefile
-34. Polish, test, create demo script
+34. Polish, test, create demo script - Completed: tools/run_task34_demo.sh, Makefile, PROGRESS.md, AGENTS.md

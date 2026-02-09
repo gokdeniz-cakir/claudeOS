@@ -1043,6 +1043,39 @@
     - `ucat` reads and prints FAT32 `HELLO.TXT`
     - `uexec` execs into `uhello`
     - `appsdemo` launches all 3 successfully
-  - Regression check (`build/serial_task33_regression.log`) confirms:
-    - `libctest` still passes
-    - `shell` still runs and now lists the three new standalone ELFs in `ls /`
+- Regression check (`build/serial_task33_regression.log`) confirms:
+  - `libctest` still passes
+  - `shell` still runs and now lists the three new standalone ELFs in `ls /`
+
+## 2026-02-09 16:53:52 +0300 - Phase 7, Task 34: Polish, Test, Demo Script
+- Completed: Added a reproducible headless demo/test script and integrated it into the build workflow.
+- New tooling:
+  - `tools/run_task34_demo.sh`
+    - boots QEMU headless with serial-to-file logging
+    - drives console commands via QEMU monitor `sendkey`:
+      - `help`
+      - `libctest`
+      - `shell`
+      - `uhello`
+      - `ucat`
+      - `uexec`
+      - `appsdemo`
+    - validates required serial markers and exits non-zero on mismatch
+- Build integration:
+  - `Makefile`:
+    - added `TASK34_DEMO_SCRIPT` variable
+    - added `demo` phony target
+    - `make demo` now runs the full scripted scenario and assertions
+- Issues encountered and fixed:
+  - Initial script version sent literal `echo sendkey ...` strings to QEMU monitor; corrected to emit raw `sendkey` commands.
+- Reference docs consulted:
+  - `docs/core/Kernel_Debugging.md`
+  - `docs/core/System_Calls.md`
+  - `docs/core/Creating_A_Shell.md`
+- Verified:
+  - `make demo` passes end-to-end.
+  - Marker checks pass for libc/shell/standalone apps flows.
+  - Current artifact sizes:
+    - `build/kernel.bin`: `95092` bytes (within `KERNEL_MAX_BYTES=97280`)
+    - `build/initrd.tar`: `43520` bytes
+    - `build/os.bin`: `262144` bytes
