@@ -1079,3 +1079,16 @@
     - `build/kernel.bin`: `95092` bytes (within `KERNEL_MAX_BYTES=97280`)
     - `build/initrd.tar`: `43520` bytes
     - `build/os.bin`: `262144` bytes
+
+## 2026-02-09 17:02:02 +0300 - Post-Phase 7 Bug Audit (Full-Pass Review)
+- Completed: Ran a bug-focused full-pass audit across boot, PMM/paging, scheduler/process, syscall/user-memory validation, VFS/FAT32/ATA, and userspace shell/libc integration.
+- Validation steps:
+  - static line-by-line review of high-risk paths
+  - reran `make demo` to confirm Task 34 scripted flow remains green
+- Findings logged for follow-up:
+  - IRQ-off lock scope in VFS/FAT32/ATA I/O path can create large interrupt latency windows.
+  - Syscall user-pointer validation still checks page presence only (not U/S access bits).
+  - PMM free-frame accounting can drift on overlapping usable E820 ranges.
+  - Stage2 E820 first-call handling is still strict on `EBX==0` edge case.
+  - Kernel entry BSS zeroing still ignores non-dword tail bytes.
+  - Keyboard init ACK warning path still misses read-timeout/read-failure diagnostics.
