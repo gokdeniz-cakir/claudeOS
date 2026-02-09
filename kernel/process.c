@@ -8,6 +8,9 @@
 #include "spinlock.h"
 #include "tss.h"
 
+#define PROCESS_USER_HEAP_BASE    0x09000000U
+#define PROCESS_USER_HEAP_LIMIT   0x0A000000U
+
 static struct process process_table[PROCESS_MAX_COUNT];
 static uint32_t process_next_pid = 1U;
 static uint32_t process_current_index = 0U;
@@ -166,6 +169,7 @@ static void release_process_slot(uint32_t index)
     proc->kernel_stack_size = 0U;
     proc->entry = 0;
     proc->arg = 0;
+    proc->user_break = PROCESS_USER_HEAP_BASE;
     proc->name[0] = '\0';
 
     if (process_total > 0U) {
@@ -267,6 +271,7 @@ void process_init(void)
         process_table[i].kernel_stack_size = 0U;
         process_table[i].entry = 0;
         process_table[i].arg = 0;
+        process_table[i].user_break = PROCESS_USER_HEAP_BASE;
         process_table[i].name[0] = '\0';
     }
 
@@ -283,6 +288,7 @@ void process_init(void)
     bootstrap->ebp = read_ebp();
     bootstrap->eip = 0U;
     bootstrap->cr3 = read_cr3();
+    bootstrap->user_break = PROCESS_USER_HEAP_BASE;
     copy_name(bootstrap->name, "kernel_main", PROCESS_NAME_MAX_LEN);
 
     process_total = 1U;
@@ -357,6 +363,7 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     proc->kernel_stack_size = PROCESS_KERNEL_STACK_SIZE;
     proc->entry = entry;
     proc->arg = arg;
+    proc->user_break = PROCESS_USER_HEAP_BASE;
     copy_name(proc->name, name, PROCESS_NAME_MAX_LEN);
 
     process_total++;
@@ -444,6 +451,86 @@ void process_refresh_tss_stack(void)
     current = &process_table[process_current_index];
     tss_set_kernel_stack(process_kernel_stack_top(current, 1U));
     spinlock_irq_restore(irq_flags);
+}
+
+uint32_t process_get_current_pid(void)
+{
+    uint32_t pid = 0U;
+    uint32_t irq_flags;
+
+    if (process_initialized == 0U) {
+        return 0U;
+    }
+
+    irq_flags = spinlock_irq_save();
+    pid = process_table[process_current_index].pid;
+    spinlock_irq_restore(irq_flags);
+    return pid;
+}
+
+void process_terminate_current(void)
+{
+    uint32_t irq_flags;
+    struct process *current;
+
+    if (process_initialized == 0U) {
+        for (;;) {
+            __asm__ volatile ("hlt");
+        }
+    }
+
+    irq_flags = spinlock_irq_save();
+    current = &process_table[process_current_index];
+    current->state = PROCESS_STATE_TERMINATED;
+    spinlock_irq_restore(irq_flags);
+
+    process_yield();
+
+    for (;;) {
+        __asm__ volatile ("hlt");
+    }
+}
+
+uint32_t process_user_heap_base(void)
+{
+    return PROCESS_USER_HEAP_BASE;
+}
+
+uint32_t process_user_heap_limit(void)
+{
+    return PROCESS_USER_HEAP_LIMIT;
+}
+
+int process_get_current_user_break(uint32_t *value)
+{
+    uint32_t irq_flags;
+
+    if (value == 0 || process_initialized == 0U) {
+        return -1;
+    }
+
+    irq_flags = spinlock_irq_save();
+    *value = process_table[process_current_index].user_break;
+    spinlock_irq_restore(irq_flags);
+    return 0;
+}
+
+int process_set_current_user_break(uint32_t value)
+{
+    uint32_t irq_flags;
+
+    if (process_initialized == 0U) {
+        return -1;
+    }
+
+    if (value < PROCESS_USER_HEAP_BASE || value > PROCESS_USER_HEAP_LIMIT) {
+        return -1;
+    }
+
+    irq_flags = spinlock_irq_save();
+    process_table[process_current_index].user_break = value;
+    spinlock_irq_restore(irq_flags);
+    return 0;
 }
 
 const struct process *process_get_current(void)

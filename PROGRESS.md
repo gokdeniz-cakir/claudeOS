@@ -503,3 +503,48 @@
   - `process_refresh_tss_stack()` updates `esp0` without an IRQ-safe critical section (can race with scheduler state changes under preemption).
   - Syscall gate uses an interrupt gate (IF cleared for full syscall duration), which can become a latency/deadlock hazard for longer/blocking syscall handlers.
   - Residual pre-existing risks remain: E820 single-entry rejection edge case and PMM free-frame accounting drift on overlapping E820 ranges.
+
+## 2026-02-09 13:00:48 +0300 - Phase 5, Task 23: Basic Syscalls (write, exit, sbrk)
+- Completed: Implemented first usable syscall set on top of `INT 0x80`.
+- Syscall API updates:
+  - `kernel/syscall.h`: added syscall number constants:
+    - `SYSCALL_WRITE = 1`
+    - `SYSCALL_EXIT = 2`
+    - `SYSCALL_SBRK = 3`
+  - `kernel/syscall.c`:
+    - Added `write(fd, buf, len)` for `fd` 1/2 (stdout/stderr path to VGA+serial).
+    - Added `exit(status)` with current safety rule: bootstrap `pid=1` cannot exit (returns error).
+    - Added `sbrk(increment)` with per-process break tracking and page map/unmap using PMM+paging.
+    - Added user-range + mapped-page validation for user pointers before `write`.
+- Process subsystem support for syscall state:
+  - `kernel/process.h` / `kernel/process.c`:
+    - Added per-process `user_break` field.
+    - Added `process_get_current_pid()`.
+    - Added `process_terminate_current()` (non-returning helper for syscall exit path).
+    - Added per-process break helpers:
+      - `process_user_heap_base()`
+      - `process_user_heap_limit()`
+      - `process_get_current_user_break()`
+      - `process_set_current_user_break()`
+    - Introduced initial user-heap range constants:
+      - base: `0x09000000`
+      - limit: `0x0A000000`
+- Ring3 probe update for syscall verification:
+  - `kernel/usermode.c` ring3 payload now performs:
+    - `write(1, "ring3 write ok\\n", 15)`
+    - `sbrk(+4096)`
+    - `sbrk(-4096)`
+    - `exit(0)` (expected to fail for bootstrap task)
+    - then executes `cli` to trigger expected ring3 `#GP`.
+  - This keeps the existing ring3 proof path while exercising Task 23 syscalls in sequence.
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `Task_State_Segment.md`
+  - `Context_Switching.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot (`make run`) reaches stable init/scheduler/console path with no regressions.
+  - Interactive `ring3test` confirmation is required in QEMU window to observe:
+    - ring3 write output
+    - syscall trace + expected final `#GP` in ring3.
+  - Image sizing remains within cap (`kernel.bin` = 18640 bytes, `os.bin` = 65536 bytes).

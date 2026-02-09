@@ -28,6 +28,7 @@ struct process {
     uint32_t kernel_stack_size;
     process_entry_t entry;
     void *arg;
+    uint32_t user_break;
     char name[PROCESS_NAME_MAX_LEN];
 };
 
@@ -56,6 +57,16 @@ void process_run_ready(void);
 
 /* Refresh TSS esp0 to match the currently running process kernel stack. */
 void process_refresh_tss_stack(void);
+
+/* Process lifecycle helpers used by syscall path. */
+uint32_t process_get_current_pid(void);
+void process_terminate_current(void) __attribute__((noreturn));
+
+/* Per-process user heap break helpers for sbrk. */
+uint32_t process_user_heap_base(void);
+uint32_t process_user_heap_limit(void);
+int process_get_current_user_break(uint32_t *value);
+int process_set_current_user_break(uint32_t value);
 
 /* Access process metadata. */
 const struct process *process_get_current(void);
