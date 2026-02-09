@@ -29,6 +29,7 @@
 #define ELF_MAX_FILE_SIZE       (1024U * 1024U)
 #define ELF_DEMO_VFS_PATH       "/elf_demo.elf"
 #define ELF_LIBCTEST_VFS_PATH   "/libctest.elf"
+#define ELF_SHELL_VFS_PATH      "/shell.elf"
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
@@ -624,12 +625,22 @@ static void elf_run_user_image_task(void *arg)
     usermode_enter_ring3(loaded.entry, loaded.stack_top);
 }
 
+static int32_t elf_spawn_vfs_user_process(const char *proc_name,
+                                          const char *image_path)
+{
+    if (proc_name == 0 || image_path == 0 || image_path[0] == '\0') {
+        return -1;
+    }
+
+    return process_create_kernel(proc_name, elf_run_user_image_task,
+                                 (void *)image_path);
+}
+
 void elf_run_libc_test(void)
 {
     int32_t pid;
 
-    pid = process_create_kernel("libctest", elf_run_user_image_task,
-                                (void *)ELF_LIBCTEST_VFS_PATH);
+    pid = elf_spawn_vfs_user_process("libctest", ELF_LIBCTEST_VFS_PATH);
     if (pid < 0) {
         vga_puts("[ELF] libc test spawn failed.\n");
         serial_puts("[ELF] libc test spawn failed\n");
@@ -638,4 +649,19 @@ void elf_run_libc_test(void)
 
     vga_puts("[ELF] spawned libc test process.\n");
     serial_puts("[ELF] spawned libc test process\n");
+}
+
+void elf_run_shell(void)
+{
+    int32_t pid;
+
+    pid = elf_spawn_vfs_user_process("shell", ELF_SHELL_VFS_PATH);
+    if (pid < 0) {
+        vga_puts("[ELF] shell spawn failed.\n");
+        serial_puts("[ELF] shell spawn failed\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned userspace shell.\n");
+    serial_puts("[ELF] spawned userspace shell\n");
 }

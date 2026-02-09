@@ -41,7 +41,7 @@ static void console_print_prompt(void)
 static void console_execute_line(void)
 {
     if (console_line_equals("help") != 0U) {
-        vga_puts("Commands: help, ring3test, elftest, forkexec, libctest\n");
+        vga_puts("Commands: help, ring3test, elftest, forkexec, libctest, shell\n");
         serial_puts("[CONSOLE] help shown\n");
         return;
     }
@@ -63,6 +63,11 @@ static void console_execute_line(void)
 
     if (console_line_equals("libctest") != 0U) {
         elf_run_libc_test();
+        return;
+    }
+
+    if (console_line_equals("shell") != 0U) {
+        elf_run_shell();
         return;
     }
 }

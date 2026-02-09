@@ -53,6 +53,7 @@ FAT32_SRC      := $(KERNEL_DIR)/fat32.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
 LIBCTEST_SRC   := $(USER_DIR)/libctest.c
+SHELL_SRC      := $(USER_DIR)/shell.c
 LIBC_CRT0_SRC  := $(USER_LIBC_DIR)/crt0.asm
 LIBC_SYSCALL_SRC := $(USER_LIBC_DIR)/syscall.c
 LIBC_STDIO_SRC := $(USER_LIBC_DIR)/stdio.c
@@ -109,8 +110,10 @@ LIBC_STDIO_OBJ := $(BUILD_DIR)/libc_stdio.o
 LIBC_STRING_OBJ := $(BUILD_DIR)/libc_string.o
 LIBC_MALLOC_OBJ := $(BUILD_DIR)/libc_malloc.o
 LIBCTEST_ELF   := $(BUILD_DIR)/libctest.elf
+SHELL_OBJ      := $(BUILD_DIR)/shell.o
+SHELL_ELF      := $(BUILD_DIR)/shell.elf
 INITRD_ROOT    := $(BUILD_DIR)/initrd_root
-INITRD_ROOT_STAMP := $(INITRD_ROOT)/.stamp
+INITRD_ROOT_STAMP := $(BUILD_DIR)/initrd_root.stamp
 INITRD_TAR     := $(BUILD_DIR)/initrd.tar
 INITRD_BLOB_OBJ := $(BUILD_DIR)/initrd_blob.o
 FAT32_IMG      := $(BUILD_DIR)/fat32.img
@@ -122,7 +125,7 @@ NASMFLAGS_BIN  := -f bin
 NASMFLAGS_ELF  := -f elf32
 CFLAGS         := -std=c99 -Wall -Wextra -Werror -ffreestanding -fno-builtin \
                   -nostdlib -m32 -O2 -g
-USER_CFLAGS    := $(CFLAGS) -I$(USER_LIBC_INCLUDE_DIR)
+USER_CFLAGS    := $(filter-out -g,$(CFLAGS)) -I$(USER_LIBC_INCLUDE_DIR)
 LDFLAGS        := -T $(LINKER_SCRIPT) -nostdlib -lgcc -Wl,--oformat,binary
 QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
                   -drive format=raw,file=$(FAT32_IMG),if=ide,index=1 \
@@ -268,7 +271,7 @@ $(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
 
 $(ELF_DEMO_ELF): $(ELF_DEMO_OBJ) | $(BUILD_DIR)
-	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x08048000 -e _start -o $@ $<
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08048000 -e _start -o $@ $<
 
 $(ELF_DEMO_BLOB_OBJ): $(ELF_DEMO_ELF) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
@@ -277,7 +280,7 @@ $(FORK_EXEC_DEMO_OBJ): $(FORK_EXEC_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
 
 $(FORK_EXEC_DEMO_ELF): $(FORK_EXEC_DEMO_OBJ) | $(BUILD_DIR)
-	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x0804C000 -e _start -o $@ $<
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x0804C000 -e _start -o $@ $<
 
 $(FORK_EXEC_DEMO_BLOB_OBJ): $(FORK_EXEC_DEMO_ELF) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
@@ -301,19 +304,28 @@ $(LIBC_MALLOC_OBJ): $(LIBC_MALLOC_SRC) | $(BUILD_DIR)
 $(LIBCTEST_OBJ): $(LIBCTEST_SRC) | $(BUILD_DIR)
 	$(CC) $(USER_CFLAGS) -c -o $@ $<
 
-$(LIBCTEST_ELF): $(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
-                 $(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ) $(LIBCTEST_OBJ) | $(BUILD_DIR)
-	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x08050000 -e _start -o $@ \
-		$(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
-		$(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ) $(LIBCTEST_OBJ)
+$(SHELL_OBJ): $(SHELL_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+USER_LIBC_OBJS := $(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
+                  $(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ)
+
+$(LIBCTEST_ELF): $(USER_LIBC_OBJS) $(LIBCTEST_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08050000 -e _start -o $@ \
+		$(USER_LIBC_OBJS) $(LIBCTEST_OBJ)
+
+$(SHELL_ELF): $(USER_LIBC_OBJS) $(SHELL_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08054000 -e _start -o $@ \
+		$(USER_LIBC_OBJS) $(SHELL_OBJ)
 
 # --- Embedded initrd tar image build chain -----------------------------------
-$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) | $(BUILD_DIR)
+$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) $(SHELL_ELF) | $(BUILD_DIR)
 	rm -rf $(INITRD_ROOT)
 	mkdir -p $(INITRD_ROOT)
 	cp -R $(INITRD_DIR)/. $(INITRD_ROOT)/
 	cp $(ELF_DEMO_ELF) $(INITRD_ROOT)/elf_demo.elf
 	cp $(LIBCTEST_ELF) $(INITRD_ROOT)/libctest.elf
+	cp $(SHELL_ELF) $(INITRD_ROOT)/shell.elf
 	touch $@
 
 $(INITRD_TAR): $(INITRD_ROOT_STAMP) | $(BUILD_DIR)

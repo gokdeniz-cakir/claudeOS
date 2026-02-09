@@ -926,3 +926,38 @@
     - `Hello from ClaudeOS FAT32 via ATA PIO.`
     - Console remains responsive afterward (`help` still works).
   - Regression spot checks (headless `sendkey`) confirm `elftest` and `forkexec` still behave as before.
+
+## 2026-02-09 16:17:08 +0300 - Phase 7, Task 31: Shell as a Userspace Process
+- Completed: Added an initial userspace shell binary (`/shell.elf`) and integrated it with kernel console launch flow.
+- Userspace shell implementation:
+  - New file: `user/shell.c`
+  - Behavior:
+    - prints shell banner/prompt lines from ring3
+    - demonstrates shell-style command flow (`help`, `cat /fat/HELLO.TXT`, `cat /etc/motd.txt`, `exit`)
+    - uses libc + syscall wrappers (`open/read/write/close/exit`) as a userspace process
+- Kernel integration:
+  - `kernel/console.c`: added `shell` command and updated help output
+  - `kernel/elf.c` / `kernel/elf.h`: added `elf_run_shell()` and generalized VFS-user-image spawn helper for shell/libctest
+- Build/initrd updates (`Makefile`):
+  - Added `user/shell.c` build/link path to produce `build/shell.elf`
+  - Added `shell.elf` to initrd staging (`build/initrd_root/shell.elf`)
+  - Added user ELF link stripping (`-s`) and removed debug info from user C flags (`USER_CFLAGS` without `-g`) to keep image size within current bootloader sector cap
+  - Moved initrd stamp file outside tar root (`build/initrd_root.stamp`) to avoid packing a synthetic `/.stamp` entry into initrd
+- Issue encountered and resolved:
+  - Initial Task 31 integration exceeded current kernel image cap by 292 bytes (`97572 > 97280`) due extra initrd payload.
+  - Fixed by removing stamp-entry tar overhead and stripping user ELFs; build now fits without changing boot read chunking.
+- Reference docs consulted:
+  - `docs/core/Creating_A_Shell.md`
+  - `docs/core/Terminals.md`
+  - `docs/core/C_Library.md`
+- Verified:
+  - `make -j4` succeeds.
+  - Headless QEMU `sendkey` test for `shell` confirms:
+    - `[CONSOLE] shell`
+    - `[ELF] spawned userspace shell`
+    - `[SHELL] ClaudeOS userspace shell started`
+    - shell reads and prints `/fat/HELLO.TXT` and `/etc/motd.txt`
+    - kernel console remains responsive after shell exits (`help` still works).
+  - Regressions:
+    - `libctest` still runs successfully.
+    - `elftest` still reaches expected terminal ring3 `#GP`.
