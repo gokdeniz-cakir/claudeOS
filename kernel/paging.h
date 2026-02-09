@@ -30,4 +30,10 @@ uint32_t paging_unmap_page(uint32_t virt_addr);
  */
 uint32_t paging_get_phys_addr(uint32_t virt_addr);
 
+/*
+ * Upgrade flags for an already-mapped 4KB page (bitwise OR).
+ * Returns 0 on success, -1 if the page is not mapped/invalid.
+ */
+int paging_or_page_flags(uint32_t virt_addr, uint32_t flags);
+
 #endif /* CLAUDE_PAGING_H */

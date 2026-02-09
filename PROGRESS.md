@@ -582,3 +582,47 @@
   - QEMU serial smoke boot (`make run`) reaches stable init/scheduler/console path with no regressions.
   - Interactive `elftest` execution must be run in QEMU window to validate loader jump and user ELF runtime behavior.
   - Image sizing remains within cap (`kernel.bin` = 25408 bytes, `os.bin` = 65536 bytes; embedded `elf_demo.elf` = 4688 bytes).
+
+## 2026-02-09 13:23:56 +0300 - Codebase Audit (Reviewer Pass 4, post-Task 23/24)
+- Completed: Re-audited syscall (`write/exit/sbrk`) and embedded ELF loader paths with static review + runtime validation.
+- Runtime validation performed:
+  - `make -j4` successful with `-Wall -Wextra -Werror`.
+  - Headless QEMU run with monitor `sendkey` automation for:
+    - `ring3test` (observed syscall path + expected ring3 `#GP`)
+    - `elftest` (observed ELF load, syscall activity, and expected ring3 `#GP`)
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `ELF.md`
+  - `ELF_Tutorial.md`
+  - `Paging.md`
+  - `Detecting_Memory_(x86).md`
+- Findings captured for follow-up:
+  - ELF loader does not reconcile permissions for overlapping PT_LOAD pages (can leave writable data page read-only in user mode).
+  - Process teardown still does not reclaim user mappings created by `sbrk`/ELF load (future memory/frame leakage risk).
+  - Syscall user-pointer validation checks presence but not U/S access bit, leaving a future kernel-memory exposure hazard if supervisor mappings appear below split.
+  - ELF loader uses a 4KB on-stack mapped-page scratch array while kernel process stacks are also 4KB, creating stack-overflow risk once loader is used from non-bootstrap process context.
+  - Residual pre-existing boot risk remains: stage2 E820 first-call path still fails if BIOS returns a valid single-entry map (`EBX=0`).
+
+## 2026-02-09 13:28:38 +0300 - Post-Task 24 Audit Hotfixes (#1 and #5)
+- Completed: Fixed the two requested ELF loader issues from reviewer pass 4.
+- Fix #1 (PT_LOAD permission merge for overlapping pages):
+  - Added `paging_or_page_flags()` in:
+    - `kernel/paging.h`
+    - `kernel/paging.c`
+  - `kernel/elf.c` now upgrades flags for already-loader-mapped overlap pages when a later segment requires writable access.
+  - This prevents valid overlapping RX/RW ELF layouts from leaving data pages read-only.
+- Fix #5 (ELF loader stack footprint):
+  - Moved ELF mapped-page scratch list off stack:
+    - replaced local `uint32_t mapped_pages[1024]` with file-scope loader scratch buffer.
+  - Keeps loader within 4KB kernel-stack constraints when invoked outside bootstrap context.
+- Deferred by request:
+  - #2 and #3 are intentionally postponed and tagged for Task 29/fork+exec audit:
+    - user mapping reclamation on process teardown
+    - per-process `user_break` correctness relative to global CR3 sharing
+- Explicitly not changed in this hotfix round:
+  - #4 (U/S-bit pointer hardening) deferred.
+  - #6 (E820 single-entry edge case) deferred.
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot (`make run`) reaches stable init/scheduler/console path with no regressions.
+  - Image sizing remains within cap (`kernel.bin` = 25504 bytes, `os.bin` = 65536 bytes).

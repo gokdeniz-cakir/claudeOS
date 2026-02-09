@@ -24,6 +24,9 @@
 #define ELF_USER_STACK_TOP      (ELF_USER_STACK_PAGE + PAGE_SIZE)
 #define ELF_MAX_MAPPED_PAGES    1024U
 
+/* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
+static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
+
 struct elf32_ehdr {
     uint8_t e_ident[ELF_EI_NIDENT];
     uint16_t e_type;
@@ -103,7 +106,7 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
     const struct elf32_ehdr *ehdr;
     const struct elf32_phdr *phdr_table;
     uint32_t phdr_bytes;
-    uint32_t mapped_pages[ELF_MAX_MAPPED_PAGES];
+    uint32_t *mapped_pages = elf_mapped_pages;
     uint32_t mapped_count = 0U;
     uint32_t i;
 
@@ -181,6 +184,14 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
                 if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) == 0U) {
                     cleanup_mapped_pages(mapped_pages, mapped_count);
                     return -1;
+                }
+
+                /* Overlapping PT_LOAD segments may require stronger perms later. */
+                if ((copy_flags & PAGE_WRITABLE) != 0U) {
+                    if (paging_or_page_flags(page, PAGE_USER | PAGE_WRITABLE) != 0) {
+                        cleanup_mapped_pages(mapped_pages, mapped_count);
+                        return -1;
+                    }
                 }
 
                 page += PAGE_SIZE;

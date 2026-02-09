@@ -127,3 +127,50 @@ uint32_t paging_get_phys_addr(uint32_t virt_addr)
 
     return (entry & PAGE_FRAME_MASK) + offset;
 }
+
+int paging_or_page_flags(uint32_t virt_addr, uint32_t flags)
+{
+    uint32_t pd_index;
+    uint32_t pt_index;
+    uint32_t *pd;
+    uint32_t required_pde_flags = PAGE_PRESENT | PAGE_WRITABLE;
+    uint32_t *pt;
+    uint32_t entry;
+    uint32_t new_entry;
+    uint32_t upgrade_flags = flags & (PAGE_WRITABLE | PAGE_USER);
+
+    if ((virt_addr & (PAGE_SIZE - 1U)) != 0U) {
+        return -1;
+    }
+
+    pd_index = virt_addr >> 22;
+    pt_index = (virt_addr >> 12) & 0x3FFU;
+    pd = paging_page_directory();
+
+    if ((upgrade_flags & PAGE_USER) != 0U) {
+        required_pde_flags |= PAGE_USER;
+    }
+
+    if ((pd[pd_index] & PAGE_PRESENT) == 0U) {
+        return -1;
+    }
+
+    if ((pd[pd_index] & required_pde_flags) != required_pde_flags) {
+        pd[pd_index] |= required_pde_flags;
+        paging_flush_tlb_all();
+    }
+
+    pt = paging_page_table(pd_index);
+    entry = pt[pt_index];
+    if ((entry & PAGE_PRESENT) == 0U) {
+        return -1;
+    }
+
+    new_entry = entry | upgrade_flags | PAGE_PRESENT;
+    if (new_entry != entry) {
+        pt[pt_index] = new_entry;
+        paging_flush_tlb_single(virt_addr);
+    }
+
+    return 0;
+}
