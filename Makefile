@@ -45,8 +45,11 @@ SYSCALL_SRC    := $(KERNEL_DIR)/syscall.c
 SYSCALL_STUBS_SRC := $(KERNEL_DIR)/syscall_stubs.asm
 ELF_SRC        := $(KERNEL_DIR)/elf.c
 VFS_SRC        := $(KERNEL_DIR)/vfs.c
+INITRD_SRC     := $(KERNEL_DIR)/initrd.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 LINKER_SCRIPT  := linker.ld
+INITRD_DIR     := initrd
+INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
 
 # --- Build outputs -----------------------------------------------------------
 MBR_BIN        := $(BUILD_DIR)/mbr.bin
@@ -77,9 +80,12 @@ SYSCALL_OBJ    := $(BUILD_DIR)/syscall.o
 SYSCALL_STUBS_OBJ := $(BUILD_DIR)/syscall_stubs.o
 ELF_OBJ        := $(BUILD_DIR)/elf.o
 VFS_OBJ        := $(BUILD_DIR)/vfs.o
+INITRD_OBJ     := $(BUILD_DIR)/initrd.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
 ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
+INITRD_TAR     := $(BUILD_DIR)/initrd.tar
+INITRD_BLOB_OBJ := $(BUILD_DIR)/initrd_blob.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -215,6 +221,10 @@ $(ELF_OBJ): $(ELF_SRC) | $(BUILD_DIR)
 $(VFS_OBJ): $(VFS_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- initrd tarfs layer (ELF object) -----------------------------------------
+$(INITRD_OBJ): $(INITRD_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Embedded user ELF demo build chain --------------------------------------
 $(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
@@ -225,6 +235,13 @@ $(ELF_DEMO_ELF): $(ELF_DEMO_OBJ) | $(BUILD_DIR)
 $(ELF_DEMO_BLOB_OBJ): $(ELF_DEMO_ELF) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
+# --- Embedded initrd tar image build chain -----------------------------------
+$(INITRD_TAR): $(INITRD_INPUTS) | $(BUILD_DIR)
+	tar --format=ustar -cf $@ -C $(INITRD_DIR) .
+
+$(INITRD_BLOB_OBJ): $(INITRD_TAR) | $(BUILD_DIR)
+	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
@@ -233,7 +250,8 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
-               $(ELF_OBJ) $(VFS_OBJ) $(ELF_DEMO_BLOB_OBJ)
+               $(ELF_OBJ) $(VFS_OBJ) $(INITRD_OBJ) \
+               $(ELF_DEMO_BLOB_OBJ) $(INITRD_BLOB_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

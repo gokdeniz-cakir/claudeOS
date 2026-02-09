@@ -15,6 +15,7 @@
 #include "tss.h"
 #include "syscall.h"
 #include "vfs.h"
+#include "initrd.h"
 
 static void demo_delay(void)
 {
@@ -106,6 +107,12 @@ void kernel_main(void)
     vfs_init();
     vga_puts("VFS initialized.\n");
     serial_puts("VFS initialized\n");
+
+    if (initrd_init() == 0) {
+        vga_puts("Initrd mounted.\n");
+    } else {
+        vga_puts("Initrd mount failed.\n");
+    }
 
     tss_init();
     vga_puts("TSS initialized.\n");

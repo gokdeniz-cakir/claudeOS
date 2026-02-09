@@ -649,3 +649,33 @@
 - Verified:
   - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
   - `make run` reaches stable boot, including `[VFS] initialized`, and continues through scheduler + console initialization.
+
+## 2026-02-09 13:46:28 +0300 - Phase 6, Task 26: initrd / Ramdisk (tar-based)
+- Completed: Added a read-only tar-backed initrd filesystem and mounted it on VFS root (`/`) at boot.
+- New files:
+  - `kernel/initrd.h`
+  - `kernel/initrd.c`
+  - `initrd/hello.txt`
+  - `initrd/etc/motd.txt`
+- Implementation details:
+  - Embedded initrd archive build pipeline in `Makefile`:
+    - create `build/initrd.tar` from `initrd/` using `tar --format=ustar`
+    - convert to linkable blob object (`build/initrd_blob.o`) via `objcopy`
+    - link blob into kernel image
+  - `kernel/initrd.c` implements:
+    - USTAR header parsing (including octal size parsing and 512-byte block stepping)
+    - in-memory initrd node table (directories + regular files)
+    - hierarchical lookup via VFS vnode ops (`lookup`) and read-only file reads (`read`)
+    - root mount via `vfs_mount("/")`
+  - `kernel/kernel.c` now calls `initrd_init()` immediately after `vfs_init()`.
+  - Added boot self-test: open/read `/hello.txt` through VFS and log the content to serial.
+- Reference docs consulted:
+  - `docs/core/Initrd.md`
+  - `docs/library/USTAR.md`
+  - `docs/library/Tar.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - `make run` serial output confirms:
+    - `[INITRD] mounted tar initrd entries=4`
+    - `[INITRD] self-test /hello.txt: Hello from ClaudeOS initrd.`
+  - Boot continues through scheduler and console initialization with no regressions.
