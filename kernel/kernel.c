@@ -101,6 +101,8 @@ void kernel_main(void)
     tss_init();
     vga_puts("TSS initialized.\n");
     serial_puts("TSS initialized\n");
+    process_refresh_tss_stack();
+    serial_puts("[PROC] TSS esp0 synchronized for current task\n");
 
     (void)process_create_kernel("demo_a", demo_process_a, 0);
     (void)process_create_kernel("demo_b", demo_process_b, 0);

@@ -6,6 +6,7 @@
 #include "heap.h"
 #include "serial.h"
 #include "spinlock.h"
+#include "tss.h"
 
 static struct process process_table[PROCESS_MAX_COUNT];
 static uint32_t process_next_pid = 1U;
@@ -229,6 +230,27 @@ static uint32_t process_has_ready(void)
     return 0U;
 }
 
+static uint32_t process_kernel_stack_top(const struct process *proc, uint8_t use_live_esp)
+{
+    uint32_t top;
+
+    if (proc != 0 && proc->kernel_stack_base != 0 && proc->kernel_stack_size != 0U) {
+        top = (uint32_t)(uintptr_t)proc->kernel_stack_base + proc->kernel_stack_size;
+        top &= ~0x0FU;
+        return top;
+    }
+
+    if (use_live_esp != 0U) {
+        return read_esp();
+    }
+
+    if (proc != 0 && proc->esp != 0U) {
+        return proc->esp;
+    }
+
+    return read_esp();
+}
+
 void process_init(void)
 {
     uint32_t i;
@@ -374,6 +396,7 @@ void process_yield(void)
         if (current->state == PROCESS_STATE_READY) {
             current->state = PROCESS_STATE_RUNNING;
         }
+        tss_set_kernel_stack(process_kernel_stack_top(current, 1U));
         spinlock_irq_restore(irq_flags);
         return;
     }
@@ -390,6 +413,7 @@ void process_yield(void)
 
     next->state = PROCESS_STATE_RUNNING;
     process_current_index = (uint32_t)next_slot;
+    tss_set_kernel_stack(process_kernel_stack_top(next, 0U));
 
     process_switch(&current->esp, next->esp);
 
@@ -404,6 +428,15 @@ void process_run_ready(void)
     }
 
     process_reap_zombie();
+}
+
+void process_refresh_tss_stack(void)
+{
+    if (process_initialized == 0U) {
+        return;
+    }
+
+    tss_set_kernel_stack(process_kernel_stack_top(&process_table[process_current_index], 1U));
 }
 
 const struct process *process_get_current(void)

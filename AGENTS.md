@@ -86,7 +86,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 
 ### Phase 5: User Mode & Syscalls
 20. Ring 0 → Ring 3 transition - Completed: kernel/kernel_entry.asm, kernel/usermode.c, kernel/usermode.h, kernel/console.c
-21. TSS stack switching on syscall
+21. TSS stack switching on syscall - Completed: kernel/process.c, kernel/process.h, kernel/kernel.c, kernel/usermode.c
 22. INT 0x80 syscall interface
 23. Basic syscalls: write, exit, sbrk
 24. ELF loader (load simple static ELF binaries)

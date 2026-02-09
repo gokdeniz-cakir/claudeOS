@@ -389,6 +389,33 @@
   - Image sizing remains within bootloader cap (`kernel.bin` = 16888 bytes, `os.bin` = 65536 bytes).
   - Full `ring3test` interaction requires manual keyboard input in QEMU window (not automatable via serial-only run).
 
+## 2026-02-09 12:33:40 +0300 - Phase 5, Task 21: TSS Stack Switching on Syscall Path
+- Completed: Wired per-task `TSS.esp0` updates into the scheduler/context-switch flow.
+- Process scheduler integration:
+  - `kernel/process.c` now computes a kernel stack top per task (`process_kernel_stack_top`).
+  - `process_yield()` now updates `tss_set_kernel_stack(...)`:
+    - on task switches: sets `esp0` for the next scheduled task before `process_switch`.
+    - on no-op yields: refreshes `esp0` for the currently running task.
+  - Added `process_refresh_tss_stack()` to sync `esp0` to the current task on demand.
+  - Added prototype in `kernel/process.h`.
+- Kernel init integration:
+  - `kernel/kernel.c` now calls `process_refresh_tss_stack()` immediately after `tss_init()` to bind initial `esp0` to the bootstrap task stack context.
+- Ring3 test hygiene for upcoming ELF loader work:
+  - `kernel/usermode.c` ring3 probe virtual addresses moved away from common ELF base assumptions:
+    - code: `0x08000000`
+    - stack: `0x08001000`
+  - Removed persistent `user_test_prepared` latch and static frame ownership state from ring3 probe setup.
+  - `usermode_run_ring3_test()` now refreshes TSS via `process_refresh_tss_stack()` instead of directly writing `esp0` from local inline asm.
+- Reference docs consulted from `docs/core/`:
+  - `Task_State_Segment.md`
+  - `Context_Switching.md`
+  - `System_Calls.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot (`make run`) reaches stable scheduler + console path with no regressions.
+  - Serial log now confirms initial synchronization: `[PROC] TSS esp0 synchronized for current task`.
+  - Image sizing remains within cap (`kernel.bin` = 17080 bytes, `os.bin` = 65536 bytes).
+
 ## 2026-02-09 03:11:44 +0300 - Codebase Audit (Reviewer Pass 2, post-Task 20)
 - Completed: Re-audited boot, scheduler, TSS/ring3 transition path, memory manager, and console command integration after Task 20.
 - Validation:

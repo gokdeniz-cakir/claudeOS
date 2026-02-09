@@ -54,6 +54,9 @@ void process_preempt_from_irq(void);
 /* Run cooperative switching until no READY processes remain. */
 void process_run_ready(void);
 
+/* Refresh TSS esp0 to match the currently running process kernel stack. */
+void process_refresh_tss_stack(void);
+
 /* Access process metadata. */
 const struct process *process_get_current(void);
 const struct process *process_get_by_pid(uint32_t pid);
