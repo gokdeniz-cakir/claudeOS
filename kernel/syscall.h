@@ -11,6 +11,8 @@
 #define SYSCALL_CLOSE    6U
 #define SYSCALL_FORK     7U
 #define SYSCALL_EXEC     8U
+#define SYSCALL_GETPID   9U
+#define SYSCALL_PCOUNT   10U
 
 #define SYSCALL_O_READ   0x1U
 #define SYSCALL_O_WRITE  0x2U

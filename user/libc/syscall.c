@@ -10,6 +10,8 @@
 #define SYSCALL_CLOSE  6U
 #define SYSCALL_FORK   7U
 #define SYSCALL_EXEC   8U
+#define SYSCALL_GETPID 9U
+#define SYSCALL_PCOUNT 10U
 
 static inline uint32_t syscall3(uint32_t number, uint32_t arg0, uint32_t arg1,
                                 uint32_t arg2)
@@ -56,6 +58,16 @@ int exec(const char *path)
 {
     return (int)(int32_t)syscall3(SYSCALL_EXEC, (uint32_t)(uintptr_t)path,
                                   0U, 0U);
+}
+
+int getpid(void)
+{
+    return (int)(int32_t)syscall3(SYSCALL_GETPID, 0U, 0U, 0U);
+}
+
+int proc_count(void)
+{
+    return (int)(int32_t)syscall3(SYSCALL_PCOUNT, 0U, 0U, 0U);
 }
 
 void *sbrk(int32_t increment)

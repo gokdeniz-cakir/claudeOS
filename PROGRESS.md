@@ -961,3 +961,42 @@
   - Regressions:
     - `libctest` still runs successfully.
     - `elftest` still reaches expected terminal ring3 `#GP`.
+
+## 2026-02-09 16:32:16 +0300 - Phase 7, Task 32: Shell Builtins (`ls`, `cat`, `echo`, `clear`, `help`, `ps`)
+- Completed: Implemented Task 32 builtins inside userspace shell command dispatcher.
+- Files updated:
+  - `user/shell.c`:
+    - added command parsing/tokenization and builtin dispatch
+    - implemented builtins:
+      - `help`
+      - `echo`
+      - `clear` (newline-based terminal clear behavior)
+      - `cat <path>`
+      - `ls [path]` (supported for `/`, `/etc`, `/fat`, `/fat/DOCS`)
+      - `ps`
+      - `exit`
+    - shell now runs a deterministic builtin script to validate behavior end-to-end in the current no-stdin environment.
+  - `kernel/syscall.h`, `kernel/syscall.c`:
+    - added `SYSCALL_GETPID` and `SYSCALL_PCOUNT` for shell `ps` builtin
+  - `user/libc/include/unistd.h`, `user/libc/syscall.c`:
+    - added libc wrappers for `getpid()` and `proc_count()`
+- Scope note:
+  - Interactive stdin is still pending; builtins are executed via scripted command sequence in this phase.
+  - This keeps work scoped to Task 32 without introducing a new input syscall path.
+- Reference docs consulted:
+  - `docs/core/Creating_A_Shell.md`
+  - `docs/core/Terminals.md`
+  - `docs/core/System_Calls.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU `sendkey` run for `shell` confirms builtin behavior:
+    - `help` prints builtin list
+    - `echo` prints arguments
+    - `ls` lists supported paths
+    - `cat` reads both initrd and FAT32 files
+    - `ps` prints current PID + total process count
+    - `clear` emits expected line clear behavior
+    - `exit` returns control to kernel console
+  - Regression checks:
+    - `libctest` still passes.
+    - `elftest` still reaches expected terminal ring3 `#GP`.

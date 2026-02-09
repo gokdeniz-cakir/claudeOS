@@ -15,6 +15,8 @@ ssize_t read(int fd, void *buf, uint32_t len);
 int close(int fd);
 int fork(void);
 int exec(const char *path);
+int getpid(void);
+int proc_count(void);
 void *sbrk(int32_t increment);
 void exit(int status) __attribute__((noreturn));
 

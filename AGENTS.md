@@ -101,6 +101,6 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 ### Phase 7: Shell & Userspace 
 30. Basic libc (printf, malloc, string functions) - Completed: user/libc/*, user/libctest.c, kernel/console.c, kernel/elf.c, Makefile
 31. Shell as a userspace process - Completed: user/shell.c, user/libc/*, kernel/console.c, kernel/elf.c, kernel/elf.h, Makefile
-32. Builtins: ls, cat, echo, clear, help, ps
+32. Builtins: ls, cat, echo, clear, help, ps - Completed: user/shell.c, user/libc/syscall.c, user/libc/include/unistd.h, kernel/syscall.c, kernel/syscall.h
 33. At least 2-3 standalone userspace programs
 34. Polish, test, create demo script

@@ -394,6 +394,16 @@ static uint32_t syscall_exit(uint32_t status)
     process_terminate_current();
 }
 
+static uint32_t syscall_getpid(void)
+{
+    return process_get_current_pid();
+}
+
+static uint32_t syscall_process_count(void)
+{
+    return process_count();
+}
+
 static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
                                  uint32_t arg2, uint32_t arg3, uint32_t arg4,
                                  uint32_t arg5)
@@ -419,6 +429,10 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return (uint32_t)(int32_t)syscall_fork();
         case SYSCALL_EXEC:
             return syscall_exec(arg0);
+        case SYSCALL_GETPID:
+            return syscall_getpid();
+        case SYSCALL_PCOUNT:
+            return syscall_process_count();
         default:
             return SYSCALL_RET_ENOSYS;
     }
