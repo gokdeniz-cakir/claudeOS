@@ -388,3 +388,22 @@
   - QEMU serial smoke boot (`make run`) still reaches stable scheduler + console path.
   - Image sizing remains within bootloader cap (`kernel.bin` = 16888 bytes, `os.bin` = 65536 bytes).
   - Full `ring3test` interaction requires manual keyboard input in QEMU window (not automatable via serial-only run).
+
+## 2026-02-09 03:11:44 +0300 - Codebase Audit (Reviewer Pass 2, post-Task 20)
+- Completed: Re-audited boot, scheduler, TSS/ring3 transition path, memory manager, and console command integration after Task 20.
+- Validation:
+  - `make clean && make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU serial smoke boot reaches stable scheduler + console loop.
+  - Automated ring3 probe run performed via QEMU monitor `sendkey` scripting; serial log confirms:
+    - command dispatch (`[CONSOLE] ring3test`)
+    - ring3 entry marker (`[USER] entering ring3 test...`)
+    - expected `#GP` with `CS=0x23` and `DS/ES/FS/GS=0x2B`.
+- Reference docs consulted from `docs/core/`:
+  - `Getting_to_Ring_3.md`
+  - `Task_State_Segment.md`
+  - `Context_Switching.md`
+  - `Detecting_Memory_(x86).md`
+- Findings captured for follow-up:
+  - `tss.esp0` update is still not integrated with scheduler task-switch flow (critical before real multi-task ring3/syscall work).
+  - Ring3 test mappings are global/static debug mappings and can conflict with future user program load addresses if left enabled.
+  - PMM free-frame accounting remains vulnerable to overlap-induced drift on pathological/unsorted E820 maps.
