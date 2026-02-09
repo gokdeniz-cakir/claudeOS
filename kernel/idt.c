@@ -96,8 +96,8 @@ void idt_init(void)
     idt_set_gate(30, (uint32_t)isr30, KERNEL_CS, IDT_GATE_INT32);
     idt_set_gate(31, (uint32_t)isr31, KERNEL_CS, IDT_GATE_INT32);
 
-    /* User-callable syscall vector. */
-    idt_set_gate(0x80, (uint32_t)syscall_int80, KERNEL_CS, IDT_GATE_INT32_USER);
+    /* User-callable syscall vector. Trap gate preserves IF in handler path. */
+    idt_set_gate(0x80, (uint32_t)syscall_int80, KERNEL_CS, IDT_GATE_TRAP32_USER);
 
     /* Vectors 32-47 left empty for now (IRQs, added in Task 7) */
     /* Vectors 48-255 left mostly empty (available for software interrupts) */

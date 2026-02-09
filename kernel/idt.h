@@ -23,6 +23,7 @@ struct idt_ptr {
 #define IDT_GATE_INT32      0x8E    /* Present, DPL=0, 32-bit interrupt gate */
 #define IDT_GATE_TRAP32     0x8F    /* Present, DPL=0, 32-bit trap gate */
 #define IDT_GATE_INT32_USER 0xEE    /* Present, DPL=3, 32-bit interrupt gate */
+#define IDT_GATE_TRAP32_USER 0xEF   /* Present, DPL=3, 32-bit trap gate */
 
 /* Set a single IDT gate entry */
 void idt_set_gate(uint8_t num, uint32_t offset, uint16_t selector,

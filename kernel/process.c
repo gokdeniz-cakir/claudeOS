@@ -432,11 +432,18 @@ void process_run_ready(void)
 
 void process_refresh_tss_stack(void)
 {
+    uint32_t irq_flags;
+    struct process *current;
+
     if (process_initialized == 0U) {
         return;
     }
 
-    tss_set_kernel_stack(process_kernel_stack_top(&process_table[process_current_index], 1U));
+    /* Keep TSS esp0 selection coherent with scheduler state updates. */
+    irq_flags = spinlock_irq_save();
+    current = &process_table[process_current_index];
+    tss_set_kernel_stack(process_kernel_stack_top(current, 1U));
+    spinlock_irq_restore(irq_flags);
 }
 
 const struct process *process_get_current(void)

@@ -471,3 +471,35 @@
     - `[SYSCALL] INT 0x80 interface initialized`
   - Full ring3 syscall-path confirmation still requires interactive `ring3test` in QEMU window.
   - Image sizing remains within cap (`kernel.bin` = 17456 bytes, `os.bin` = 65536 bytes).
+
+## 2026-02-09 12:55:36 +0300 - Post-Task 22 Hardening (Scheduler/TSS and Syscall Gate)
+- Completed: Applied follow-up fixes from audit feedback after Task 22 validation.
+- `process_refresh_tss_stack()` race fix:
+  - `kernel/process.c` now wraps `process_current_index` read + `tss_set_kernel_stack(...)` in `spinlock_irq_save()`/`spinlock_irq_restore()`.
+  - This aligns with `process_yield()` scheduler critical-section semantics and prevents TSS `esp0` being refreshed against stale task index under preemption.
+- Syscall gate behavior hardening:
+  - `kernel/idt.h` added `IDT_GATE_TRAP32_USER` (`0xEF`).
+  - `kernel/idt.c` switched vector `0x80` from user interrupt gate to user trap gate.
+  - Trap gate preserves `IF`, reducing risk of IRQ starvation/latency spikes during longer syscall handlers.
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot remains stable through init/scheduler/console path.
+
+## 2026-02-09 12:50:50 +0300 - Codebase Audit (Reviewer Pass 3, post-Task 22)
+- Completed: Re-audited Task 21/22 changes (`TSS.esp0` switching + `INT 0x80` syscall path), including scheduler/TSS interactions and syscall entry/return behavior.
+- Validation:
+  - `make clean && make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU serial smoke boot reaches stable scheduler + console loop.
+  - Automated `ring3test` run via QEMU monitor `sendkey` confirmed:
+    - syscall entry marker (`[SYSCALL] first INT 0x80 received`)
+    - return value propagation (`EAX=0xFFFFFFFF`, copied to `EBX`)
+    - expected post-syscall ring3 `#GP` at user `CS=0x23`.
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `Interrupt_Descriptor_Table.md`
+  - `Interrupt_Service_Routines.md`
+  - `Context_Switching.md`
+- Findings captured for follow-up:
+  - `process_refresh_tss_stack()` updates `esp0` without an IRQ-safe critical section (can race with scheduler state changes under preemption).
+  - Syscall gate uses an interrupt gate (IF cleared for full syscall duration), which can become a latency/deadlock hazard for longer/blocking syscall handlers.
+  - Residual pre-existing risks remain: E820 single-entry rejection edge case and PMM free-frame accounting drift on overlapping E820 ranges.
