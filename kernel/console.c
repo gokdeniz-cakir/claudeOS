@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "elf.h"
 #include "serial.h"
 #include "usermode.h"
 #include "vga.h"
@@ -40,13 +41,18 @@ static void console_print_prompt(void)
 static void console_execute_line(void)
 {
     if (console_line_equals("help") != 0U) {
-        vga_puts("Commands: help, ring3test\n");
+        vga_puts("Commands: help, ring3test, elftest\n");
         serial_puts("[CONSOLE] help shown\n");
         return;
     }
 
     if (console_line_equals("ring3test") != 0U) {
         usermode_run_ring3_test();
+        return;
+    }
+
+    if (console_line_equals("elftest") != 0U) {
+        elf_run_embedded_test();
         return;
     }
 }

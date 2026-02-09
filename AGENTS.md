@@ -89,7 +89,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 21. TSS stack switching on syscall - Completed: kernel/process.c, kernel/process.h, kernel/kernel.c, kernel/usermode.c
 22. INT 0x80 syscall interface - Completed: kernel/idt.c, kernel/idt.h, kernel/syscall.c, kernel/syscall.h, kernel/syscall_stubs.asm
 23. Basic syscalls: write, exit, sbrk - Completed: kernel/syscall.c, kernel/syscall.h, kernel/process.c, kernel/process.h, kernel/usermode.c
-24. ELF loader (load simple static ELF binaries)
+24. ELF loader (load simple static ELF binaries) - Completed: kernel/elf.c, kernel/elf.h, user/elf_demo.asm, Makefile, kernel/console.c
 
 ### Phase 6: Filesystem 
 25. VFS layer

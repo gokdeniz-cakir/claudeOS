@@ -103,8 +103,7 @@ static int usermode_prepare_ring3_test(void)
     return 0;
 }
 
-__attribute__((noreturn)) static void usermode_iret_enter(uint32_t entry_eip,
-                                                           uint32_t user_esp)
+void usermode_enter_ring3(uint32_t entry_eip, uint32_t user_esp)
 {
     __asm__ volatile (
         "movw %w[user_ds], %%ax\n\t"
@@ -146,5 +145,5 @@ void usermode_run_ring3_test(void)
     vga_puts("[USER] entering ring3 test (write/sbrk/exit + expected #GP).\n");
     serial_puts("[USER] entering ring3 test (write/sbrk/exit + expected #GP)\n");
 
-    usermode_iret_enter(USER_TEST_CODE_VADDR, USER_TEST_STACK_TOP);
+    usermode_enter_ring3(USER_TEST_CODE_VADDR, USER_TEST_STACK_TOP);
 }

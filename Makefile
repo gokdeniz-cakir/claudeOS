@@ -6,11 +6,14 @@
 NASM      := nasm
 CC        := i686-elf-gcc
 LD        := i686-elf-gcc
+LD_BIN    := i686-elf-ld
+OBJCOPY   := i686-elf-objcopy
 QEMU      := qemu-system-i386
 
 # --- Directories -------------------------------------------------------------
 BOOT_DIR   := boot
 KERNEL_DIR := kernel
+USER_DIR   := user
 BUILD_DIR  := build
 
 # --- Source files ------------------------------------------------------------
@@ -40,6 +43,8 @@ SYNC_SRC       := $(KERNEL_DIR)/sync.c
 USERMODE_SRC   := $(KERNEL_DIR)/usermode.c
 SYSCALL_SRC    := $(KERNEL_DIR)/syscall.c
 SYSCALL_STUBS_SRC := $(KERNEL_DIR)/syscall_stubs.asm
+ELF_SRC        := $(KERNEL_DIR)/elf.c
+ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 LINKER_SCRIPT  := linker.ld
 
 # --- Build outputs -----------------------------------------------------------
@@ -69,6 +74,10 @@ SYNC_OBJ       := $(BUILD_DIR)/sync.o
 USERMODE_OBJ   := $(BUILD_DIR)/usermode.o
 SYSCALL_OBJ    := $(BUILD_DIR)/syscall.o
 SYSCALL_STUBS_OBJ := $(BUILD_DIR)/syscall_stubs.o
+ELF_OBJ        := $(BUILD_DIR)/elf.o
+ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
+ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
+ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -196,6 +205,20 @@ $(SYSCALL_OBJ): $(SYSCALL_SRC) | $(BUILD_DIR)
 $(SYSCALL_STUBS_OBJ): $(SYSCALL_STUBS_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
 
+# --- ELF loader (ELF object) -------------------------------------------------
+$(ELF_OBJ): $(ELF_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Embedded user ELF demo build chain --------------------------------------
+$(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(ELF_DEMO_ELF): $(ELF_DEMO_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x08048000 -e _start -o $@ $<
+
+$(ELF_DEMO_BLOB_OBJ): $(ELF_DEMO_ELF) | $(BUILD_DIR)
+	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
@@ -203,7 +226,8 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
-               $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ)
+               $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
+               $(ELF_OBJ) $(ELF_DEMO_BLOB_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

@@ -16,4 +16,8 @@
  */
 void usermode_run_ring3_test(void);
 
+/* Enter ring 3 at entry_eip with user_esp using iret transition. */
+void usermode_enter_ring3(uint32_t entry_eip, uint32_t user_esp)
+    __attribute__((noreturn));
+
 #endif /* CLAUDE_USERMODE_H */

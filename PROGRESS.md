@@ -548,3 +548,37 @@
     - ring3 write output
     - syscall trace + expected final `#GP` in ring3.
   - Image sizing remains within cap (`kernel.bin` = 18640 bytes, `os.bin` = 65536 bytes).
+
+## 2026-02-09 13:12:31 +0300 - Phase 5, Task 24: ELF Loader (Simple Static ELF)
+- Completed: Added a minimal ELF32 executable loader that maps PT_LOAD segments into user space and jumps to ELF entry in ring 3.
+- New loader module:
+  - `kernel/elf.h`
+  - `kernel/elf.c`
+  - Implements:
+    - ELF header validation (magic/class/endianness/type/machine/version)
+    - Program header parsing (`PT_LOAD` only)
+    - Per-segment user page allocation/mapping and file/bss copy semantics (`p_filesz` + zero-fill to `p_memsz`)
+    - Entry-point validation
+    - Dedicated user stack mapping for loaded ELF image (`0x0BFF0000` page)
+    - Cleanup of newly mapped pages on load failure
+- Embedded static ELF test binary:
+  - New file `user/elf_demo.asm` (simple static ring3 program using `write`, `sbrk`, `exit`, then intentional `cli` for deterministic end-of-test `#GP`).
+  - Build pipeline in `Makefile`:
+    - assemble user ELF object
+    - link to executable ELF (`build/elf_demo.elf`, entry `0x08048000`)
+    - convert ELF file to linkable blob object (`build/elf_demo_blob.o`) via `objcopy`
+    - link blob object into kernel image
+- Ring3 execution integration:
+  - `kernel/usermode.h` / `kernel/usermode.c`: exported reusable `usermode_enter_ring3(entry, esp)` iret transition helper.
+  - `kernel/console.c`: added new command `elftest` and updated `help` output.
+  - `elftest` path loads embedded ELF and transfers to ELF entry in ring 3.
+- Reference docs consulted from `docs/core/`:
+  - `ELF.md`
+  - `ELF_Tutorial.md`
+  - `System_Calls.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - ELF sample inspection (`i686-elf-readelf -h -l build/elf_demo.elf`) confirms valid 32-bit `ET_EXEC` image with one `PT_LOAD` segment and expected entry point.
+  - QEMU serial smoke boot (`make run`) reaches stable init/scheduler/console path with no regressions.
+  - Interactive `elftest` execution must be run in QEMU window to validate loader jump and user ELF runtime behavior.
+  - Image sizing remains within cap (`kernel.bin` = 25408 bytes, `os.bin` = 65536 bytes; embedded `elf_demo.elf` = 4688 bytes).
