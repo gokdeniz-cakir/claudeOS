@@ -6,6 +6,7 @@
 #include "pmm.h"
 #include "process.h"
 #include "serial.h"
+#include "vfs.h"
 #include "vga.h"
 
 #define SYSCALL_RET_ENOSYS   0xFFFFFFFFU
@@ -68,6 +69,44 @@ static uint8_t syscall_validate_user_mapping(uint32_t addr, uint32_t len)
     return 1U;
 }
 
+static uint8_t syscall_validate_user_addr(uint32_t addr)
+{
+    if (addr >= USER_KERNEL_SPLIT) {
+        return 0U;
+    }
+
+    return (uint8_t)(paging_get_phys_addr(addr) != 0U);
+}
+
+static int32_t syscall_copy_user_cstring(uint32_t user_addr, char *dst,
+                                         uint32_t dst_size)
+{
+    uint32_t i;
+
+    if (dst == 0 || dst_size < 2U || syscall_validate_user_addr(user_addr) == 0U) {
+        return -1;
+    }
+
+    for (i = 0U; i < (dst_size - 1U); i++) {
+        uint32_t addr = user_addr + i;
+        char c;
+
+        if (addr < user_addr || syscall_validate_user_addr(addr) == 0U) {
+            dst[0] = '\0';
+            return -1;
+        }
+
+        c = *(const char *)(uintptr_t)addr;
+        dst[i] = c;
+        if (c == '\0') {
+            return 0;
+        }
+    }
+
+    dst[dst_size - 1U] = '\0';
+    return -1;
+}
+
 static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
 {
     const char *buf = (const char *)(uintptr_t)user_buf;
@@ -95,6 +134,69 @@ static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
     }
 
     return (int32_t)len;
+}
+
+static int32_t syscall_open(uint32_t user_path, uint32_t flags)
+{
+    char kernel_path[VFS_PATH_MAX];
+    uint32_t vfs_flags = 0U;
+    int32_t fd;
+
+    if (syscall_copy_user_cstring(user_path, kernel_path, sizeof(kernel_path)) != 0) {
+        return -1;
+    }
+
+    if ((flags & SYSCALL_O_READ) != 0U) {
+        vfs_flags |= VFS_OPEN_READ;
+    }
+
+    if ((flags & SYSCALL_O_WRITE) != 0U) {
+        vfs_flags |= VFS_OPEN_WRITE;
+    }
+
+    if (vfs_flags == 0U) {
+        vfs_flags = VFS_OPEN_READ;
+    }
+
+    fd = vfs_open(kernel_path, vfs_flags);
+    if (fd < 0) {
+        return -1;
+    }
+
+    return fd;
+}
+
+static int32_t syscall_read(uint32_t fd, uint32_t user_buf, uint32_t len)
+{
+    int32_t rc;
+
+    if (len == 0U) {
+        return 0;
+    }
+
+    if (len > 0x7FFFFFFFU) {
+        return -1;
+    }
+
+    if (syscall_validate_user_mapping(user_buf, len) == 0U) {
+        return -1;
+    }
+
+    rc = vfs_read((int32_t)fd, (void *)(uintptr_t)user_buf, len);
+    if (rc < 0) {
+        return -1;
+    }
+
+    return rc;
+}
+
+static int32_t syscall_close(uint32_t fd)
+{
+    if (vfs_close((int32_t)fd) != VFS_OK) {
+        return -1;
+    }
+
+    return 0;
 }
 
 static uint32_t syscall_sbrk(int32_t increment)
@@ -203,6 +305,12 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return syscall_exit(arg0);
         case SYSCALL_SBRK:
             return syscall_sbrk((int32_t)arg0);
+        case SYSCALL_OPEN:
+            return (uint32_t)(int32_t)syscall_open(arg0, arg1);
+        case SYSCALL_READ:
+            return (uint32_t)(int32_t)syscall_read(arg0, arg1, arg2);
+        case SYSCALL_CLOSE:
+            return (uint32_t)(int32_t)syscall_close(arg0);
         default:
             return SYSCALL_RET_ENOSYS;
     }

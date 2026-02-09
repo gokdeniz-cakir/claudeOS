@@ -724,3 +724,50 @@
       - `[FAT32] self-test /fat/HELLO.TXT: Hello from ClaudeOS FAT32 via ATA PIO.`
       - `[FAT32] self-test /fat/DOCS/INFO.TXT: Subdirectory read path works.`
   - Boot continues through scheduler + console path without regressions.
+
+## 2026-02-09 14:19:55 +0300 - Phase 6, Task 28: Syscalls (`open`, `close`, `read`)
+- Completed: Added user-visible `open`, `read`, and `close` syscalls on top of VFS.
+- Files updated:
+  - `kernel/syscall.h`
+  - `kernel/syscall.c`
+  - `user/elf_demo.asm`
+- Syscall ABI additions:
+  - `SYSCALL_OPEN = 4`
+  - `SYSCALL_READ = 5`
+  - `SYSCALL_CLOSE = 6`
+  - open flags:
+    - `SYSCALL_O_READ = 0x1`
+    - `SYSCALL_O_WRITE = 0x2`
+- Kernel syscall implementation details:
+  - Added user C-string copy/validation helper for path arguments (`open`).
+  - `open(path, flags)`:
+    - validates user path pointer/mapping
+    - maps syscall flags to VFS flags
+    - dispatches to `vfs_open`
+  - `read(fd, buf, len)`:
+    - validates user buffer mapping/range
+    - dispatches to `vfs_read`
+  - `close(fd)`:
+    - dispatches to `vfs_close`
+  - Return contract remains simple and stable for this phase:
+    - success: non-negative values
+    - failure: `-1` (`0xFFFFFFFF`)
+- Embedded user ELF test update:
+  - `user/elf_demo.asm` now exercises Task 28 path:
+    - `sbrk(+4096)` for temporary user buffer
+    - `open("/fat/HELLO.TXT", O_READ)`
+    - `read(fd, buffer, 128)`
+    - `write(1, buffer, bytes_read)`
+    - `close(fd)`
+    - `sbrk(-4096)`
+    - existing `exit` + intentional ring3 `cli` (expected `#GP`) retained for deterministic test termination.
+- Reference docs consulted:
+  - `docs/core/System_Calls.md`
+  - `docs/core/VFS.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - Automated `elftest` run via QEMU monitor `sendkey` confirmed:
+    - syscall path reaches ring3 ELF (`[ELF] loaded embedded ELF (ring3 jump)`)
+    - user-space `open/read/close` succeeds and prints FAT32 file contents from ring3:
+      - `Hello from ClaudeOS FAT32 via ATA PIO.`
+    - test ends with the expected ring3 `#GP` (intentional `cli`), preserving prior validation behavior.
