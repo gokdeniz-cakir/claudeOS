@@ -94,7 +94,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 ### Phase 6: Filesystem 
 25. VFS layer - Completed: kernel/vfs.c, kernel/vfs.h, kernel/kernel.c, Makefile
 26. initrd / ramdisk with tar-based format - Completed: kernel/initrd.c, kernel/initrd.h, initrd/hello.txt, initrd/etc/motd.txt, kernel/kernel.c, Makefile
-27. FAT32 read support via ATA PIO
+27. FAT32 read support via ATA PIO - Completed: kernel/ata.c, kernel/ata.h, kernel/fat32.c, kernel/fat32.h, kernel/io.h, kernel/kernel.c, Makefile, tools/mkfat32_image.py
 28. Syscalls: open, close, read
 29. fork + exec (at least basic versions)
 

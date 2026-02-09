@@ -679,3 +679,48 @@
     - `[INITRD] mounted tar initrd entries=4`
     - `[INITRD] self-test /hello.txt: Hello from ClaudeOS initrd.`
   - Boot continues through scheduler and console initialization with no regressions.
+
+## 2026-02-09 14:01:43 +0300 - Phase 6, Task 27: FAT32 Read Support via ATA PIO
+- Completed: Added ATA PIO sector-read support and a read-only FAT32 filesystem driver mounted through VFS.
+- New files:
+  - `kernel/ata.h`
+  - `kernel/ata.c`
+  - `kernel/fat32.h`
+  - `kernel/fat32.c`
+  - `tools/mkfat32_image.py`
+- Implementation details:
+  - ATA PIO layer (`kernel/ata.c`):
+    - Primary-bus IDENTIFY probing for master/slave drives.
+    - 28-bit LBA PIO sector read path (`ata_pio_read28`) with BSY/DRQ polling, status checks, and 400ns delays.
+    - IRQ-safe bus serialization using existing spinlock helpers.
+  - FAT32 layer (`kernel/fat32.c`):
+    - FAT32 BPB parsing and validation (boot sector at partition start).
+    - Partition detection supporting both superfloppy FAT32 and MBR FAT32 partition types (`0x0B`, `0x0C`).
+    - Directory traversal via 8.3 entries (LFN skipped), cluster-chain walking via FAT table, and file reads across cluster boundaries.
+    - Mounted at `/fat` via VFS node ops.
+  - Host-side deterministic FAT32 test image:
+    - `tools/mkfat32_image.py` generates `build/fat32.img` (64MiB FAT32 superfloppy) with:
+      - `/HELLO.TXT`
+      - `/DOCS/INFO.TXT`
+  - Build/run integration (`Makefile`):
+    - Added ATA/FAT32 kernel objects.
+    - Added FAT32 image build target.
+    - `make run` now attaches the FAT32 image as a second IDE disk.
+  - Minor I/O support extension:
+    - `kernel/io.h` now provides `inw`/`outw` helpers for ATA PIO word transfers.
+- Kernel integration:
+  - `kernel/kernel.c` now runs `fat32_init()` after VFS/initrd setup and reports mount status on VGA.
+- Reference docs consulted:
+  - `docs/core/ATA_PIO_Mode.md`
+  - `docs/core/ATA_read_write_sectors.md`
+  - `docs/core/FAT.md`
+  - `docs/core/FAT32.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - `make run` confirms:
+    - ATA probe (`primary master` + `primary slave`)
+    - FAT32 mounted at `/fat`
+    - Read self-tests passed:
+      - `[FAT32] self-test /fat/HELLO.TXT: Hello from ClaudeOS FAT32 via ATA PIO.`
+      - `[FAT32] self-test /fat/DOCS/INFO.TXT: Subdirectory read path works.`
+  - Boot continues through scheduler + console path without regressions.

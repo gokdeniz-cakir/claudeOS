@@ -46,10 +46,14 @@ SYSCALL_STUBS_SRC := $(KERNEL_DIR)/syscall_stubs.asm
 ELF_SRC        := $(KERNEL_DIR)/elf.c
 VFS_SRC        := $(KERNEL_DIR)/vfs.c
 INITRD_SRC     := $(KERNEL_DIR)/initrd.c
+ATA_SRC        := $(KERNEL_DIR)/ata.c
+FAT32_SRC      := $(KERNEL_DIR)/fat32.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 LINKER_SCRIPT  := linker.ld
 INITRD_DIR     := initrd
 INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
+TOOLS_DIR      := tools
+FAT32_IMG_TOOL := $(TOOLS_DIR)/mkfat32_image.py
 
 # --- Build outputs -----------------------------------------------------------
 MBR_BIN        := $(BUILD_DIR)/mbr.bin
@@ -81,11 +85,14 @@ SYSCALL_STUBS_OBJ := $(BUILD_DIR)/syscall_stubs.o
 ELF_OBJ        := $(BUILD_DIR)/elf.o
 VFS_OBJ        := $(BUILD_DIR)/vfs.o
 INITRD_OBJ     := $(BUILD_DIR)/initrd.o
+ATA_OBJ        := $(BUILD_DIR)/ata.o
+FAT32_OBJ      := $(BUILD_DIR)/fat32.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
 ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
 INITRD_TAR     := $(BUILD_DIR)/initrd.tar
 INITRD_BLOB_OBJ := $(BUILD_DIR)/initrd_blob.o
+FAT32_IMG      := $(BUILD_DIR)/fat32.img
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -95,8 +102,9 @@ NASMFLAGS_ELF  := -f elf32
 CFLAGS         := -std=c99 -Wall -Wextra -Werror -ffreestanding -fno-builtin \
                   -nostdlib -m32 -O2 -g
 LDFLAGS        := -T $(LINKER_SCRIPT) -nostdlib -lgcc -Wl,--oformat,binary
-QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) -no-reboot -no-shutdown \
-                  -serial stdio
+QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
+                  -drive format=raw,file=$(FAT32_IMG),if=ide,index=1 \
+                  -no-reboot -no-shutdown -serial stdio
 
 # --- Boot image limits -------------------------------------------------------
 KERNEL_MAX_SECTORS := 124
@@ -225,6 +233,14 @@ $(VFS_OBJ): $(VFS_SRC) | $(BUILD_DIR)
 $(INITRD_OBJ): $(INITRD_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- ATA PIO driver (ELF object) ---------------------------------------------
+$(ATA_OBJ): $(ATA_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- FAT32 reader (ELF object) -----------------------------------------------
+$(FAT32_OBJ): $(FAT32_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Embedded user ELF demo build chain --------------------------------------
 $(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
@@ -242,6 +258,10 @@ $(INITRD_TAR): $(INITRD_INPUTS) | $(BUILD_DIR)
 $(INITRD_BLOB_OBJ): $(INITRD_TAR) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
+# --- Secondary FAT32 test image for ATA PIO/FAT32 bring-up -------------------
+$(FAT32_IMG): $(FAT32_IMG_TOOL) | $(BUILD_DIR)
+	python3 $(FAT32_IMG_TOOL) $@
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
@@ -250,7 +270,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
-               $(ELF_OBJ) $(VFS_OBJ) $(INITRD_OBJ) \
+               $(ELF_OBJ) $(VFS_OBJ) $(INITRD_OBJ) $(ATA_OBJ) $(FAT32_OBJ) \
                $(ELF_DEMO_BLOB_OBJ) $(INITRD_BLOB_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
@@ -278,7 +298,7 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 # --- Run in QEMU -------------------------------------------------------------
-run: $(OS_BIN)
+run: $(OS_BIN) $(FAT32_IMG)
 	$(QEMU) $(QEMUFLAGS)
 
 # --- Clean -------------------------------------------------------------------

@@ -16,6 +16,7 @@
 #include "syscall.h"
 #include "vfs.h"
 #include "initrd.h"
+#include "fat32.h"
 
 static void demo_delay(void)
 {
@@ -112,6 +113,12 @@ void kernel_main(void)
         vga_puts("Initrd mounted.\n");
     } else {
         vga_puts("Initrd mount failed.\n");
+    }
+
+    if (fat32_init() == 0) {
+        vga_puts("FAT32 mounted at /fat.\n");
+    } else {
+        vga_puts("FAT32 mount failed.\n");
     }
 
     tss_init();
