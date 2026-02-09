@@ -815,3 +815,47 @@
     - expected ring3 terminal `#GP` from bootstrap-path user ELF test.
 - Scope note:
   - Current `fork()` is intentionally basic (spawn-like) under the shared-CR3 model; full POSIX-style address-space clone semantics are deferred with Task 29 follow-up audit items (`user mapping reclamation` and `per-process address-space isolation`).
+
+## 2026-02-09 14:48:15 +0300 - Audit pass for Phase 6 Tasks 28-29
+- Completed:
+  - Performed a focused reviewer audit of Task 28/29 changes (`open/read/close`, `fork/exec`) with code-level line checks and runtime spot validation.
+  - Re-checked syscall, process, ELF loader, VFS, and ATA interactions for correctness under preemption.
+- Reference docs consulted:
+  - `docs/core/System_Calls.md`
+  - `docs/core/Loading_a_Process.md`
+  - `docs/core/Processes_and_Threads.md`
+- High-priority findings (reported to user with file/line references):
+  - `process_create_kernel()` mutates PCB globals without scheduler/PCB locking, enabling fork-time races under trap-gate syscall preemption.
+  - `exec`/ELF load path can destroy previous user mappings before load success is guaranteed, making failed `exec` non-atomic.
+  - Shared address-space model (`cr3` never switched in context switch) remains incompatible with concurrent `fork`/`exec` expectations and per-process heap/accounting assumptions.
+- Future-headache findings:
+  - Global VFS FD table has no per-process ownership and no close-on-exit cleanup path.
+  - Long VFS/FAT32/ATA read paths execute with IRQs disabled due nested `spinlock_lock_irqsave` usage, risking interrupt latency spikes.
+
+## 2026-02-09 14:58:00 +0300 - Task 29 Isolation Hardening (Post-Audit Fix)
+- Completed: Fixed the shared-address-space isolation gap reported for Task 29.
+- Process/address-space updates (`kernel/process.c`, `kernel/process.h`):
+  - Added per-process page-directory ownership tracking (`owns_address_space`).
+  - Added per-process address-space creation on process creation:
+    - allocates a dedicated page directory frame
+    - copies kernel-half PDEs
+    - installs recursive PDE mapping for the new CR3
+  - Added address-space teardown on process slot release:
+    - frees user-half mappings/page tables for terminated tasks
+    - frees page-directory frame
+  - Scheduler now performs CR3 context switching in `process_yield()` before stack switch when next process has a different address space.
+- ELF loader bookkeeping updates (`kernel/elf.c`, `kernel/elf.h`):
+  - Replaced global active-page tracking with per-address-space tracking keyed by CR3.
+  - Added `elf_forget_address_space(cr3)` and wired it into process teardown to avoid stale loader metadata across CR3 reuse.
+- Reference docs consulted from `docs/core/`:
+  - `Context_Switching.md`
+  - `Paging.md`
+  - `Task_State_Segment.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - Headless QEMU `sendkey` regressions:
+    - `elftest` still loads/runs user ELF and reaches expected terminal ring3 `#GP`.
+    - `forkexec` still creates child process and runs user-mode path, reaching expected terminal ring3 `#GP`.
+- Note:
+  - This addresses Task 29 isolation semantics at the page-directory level (CR3-per-process).
+  - Full POSIX `fork` copy-on-write semantics and per-process FD ownership remain future work.

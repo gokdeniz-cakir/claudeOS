@@ -25,6 +25,7 @@ struct process {
     uint32_t ebp;
     uint32_t eip;
     uint32_t cr3;
+    uint8_t owns_address_space;
     void *kernel_stack_base;
     uint32_t kernel_stack_size;
     process_entry_t entry;

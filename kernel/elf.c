@@ -31,11 +31,16 @@
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
-static uint32_t elf_active_pages[ELF_MAX_MAPPED_PAGES];
-static uint32_t elf_active_count = 0U;
-static uint32_t elf_previous_active_pages[ELF_MAX_MAPPED_PAGES];
-static uint32_t elf_previous_active_count = 0U;
+static uint32_t elf_previous_pages[ELF_MAX_MAPPED_PAGES];
 static struct spinlock elf_loader_lock = SPINLOCK_INITIALIZER;
+
+struct elf_space_tracker {
+    uint32_t cr3;
+    uint32_t active_count;
+    uint32_t active_pages[ELF_MAX_MAPPED_PAGES];
+};
+
+static struct elf_space_tracker elf_trackers[PROCESS_MAX_COUNT];
 
 struct elf32_ehdr {
     uint8_t e_ident[ELF_EI_NIDENT];
@@ -112,23 +117,46 @@ static void cleanup_mapped_pages(const uint32_t *mapped_pages, uint32_t mapped_c
     }
 }
 
-static void remember_previous_active_pages(void)
+static uint32_t elf_read_cr3(void)
 {
-    uint32_t i;
-
-    elf_previous_active_count = elf_active_count;
-    for (i = 0U; i < elf_active_count; i++) {
-        elf_previous_active_pages[i] = elf_active_pages[i];
-    }
+    uint32_t value;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(value));
+    return value;
 }
 
-static void drop_previous_active_pages_not_reused(const uint32_t *mapped_pages,
+static struct elf_space_tracker *elf_find_tracker(uint32_t cr3, uint8_t create)
+{
+    uint32_t i;
+    struct elf_space_tracker *free_slot = 0;
+
+    for (i = 0U; i < PROCESS_MAX_COUNT; i++) {
+        if (elf_trackers[i].cr3 == cr3) {
+            return &elf_trackers[i];
+        }
+
+        if (free_slot == 0 && elf_trackers[i].cr3 == 0U) {
+            free_slot = &elf_trackers[i];
+        }
+    }
+
+    if (create == 0U || free_slot == 0) {
+        return 0;
+    }
+
+    free_slot->cr3 = cr3;
+    free_slot->active_count = 0U;
+    return free_slot;
+}
+
+static void drop_previous_active_pages_not_reused(const uint32_t *previous_pages,
+                                                  uint32_t previous_count,
+                                                  const uint32_t *mapped_pages,
                                                   uint32_t mapped_count)
 {
     uint32_t i;
 
-    for (i = 0U; i < elf_previous_active_count; i++) {
-        uint32_t page = elf_previous_active_pages[i];
+    for (i = 0U; i < previous_count; i++) {
+        uint32_t page = previous_pages[i];
         uint32_t phys;
 
         if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) != 0U) {
@@ -147,6 +175,10 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 {
     const struct elf32_ehdr *ehdr;
     const struct elf32_phdr *phdr_table;
+    struct elf_space_tracker *tracker;
+    uint32_t active_count;
+    uint32_t current_cr3;
+    uint32_t previous_count;
     uint32_t phdr_bytes;
     uint32_t *mapped_pages = elf_mapped_pages;
     uint32_t mapped_count = 0U;
@@ -156,7 +188,17 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
         return -1;
     }
 
-    remember_previous_active_pages();
+    current_cr3 = elf_read_cr3();
+    tracker = elf_find_tracker(current_cr3, 1U);
+    if (tracker == 0) {
+        return -1;
+    }
+
+    active_count = tracker->active_count;
+    previous_count = active_count;
+    for (i = 0U; i < active_count; i++) {
+        elf_previous_pages[i] = tracker->active_pages[i];
+    }
 
     ehdr = (const struct elf32_ehdr *)image;
 
@@ -226,8 +268,8 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 
             if (existing_phys != 0U) {
                 if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) == 0U) {
-                    if (page_was_mapped_by_loader(elf_previous_active_pages,
-                                                  elf_previous_active_count,
+                    if (page_was_mapped_by_loader(elf_previous_pages,
+                                                  previous_count,
                                                   page) == 0U) {
                         cleanup_mapped_pages(mapped_pages, mapped_count);
                         return -1;
@@ -290,8 +332,8 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
     if (paging_get_phys_addr(ELF_USER_STACK_PAGE) != 0U) {
         uint32_t stack_existing;
 
-        if (page_was_mapped_by_loader(elf_previous_active_pages,
-                                      elf_previous_active_count,
+        if (page_was_mapped_by_loader(elf_previous_pages,
+                                      previous_count,
                                       ELF_USER_STACK_PAGE) == 0U) {
             cleanup_mapped_pages(mapped_pages, mapped_count);
             return -1;
@@ -331,11 +373,12 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
         }
     }
 
-    drop_previous_active_pages_not_reused(mapped_pages, mapped_count);
+    drop_previous_active_pages_not_reused(elf_previous_pages, previous_count,
+                                          mapped_pages, mapped_count);
 
-    elf_active_count = mapped_count;
+    tracker->active_count = mapped_count;
     for (i = 0U; i < mapped_count; i++) {
-        elf_active_pages[i] = mapped_pages[i];
+        tracker->active_pages[i] = mapped_pages[i];
     }
 
     loaded->entry = ehdr->e_entry;
@@ -353,6 +396,26 @@ int elf_load_user_image(const uint8_t *image, uint32_t image_size,
     rc = elf_load_user_image_locked(image, image_size, loaded);
     spinlock_unlock_irqrestore(&elf_loader_lock, irq_flags);
     return rc;
+}
+
+void elf_forget_address_space(uint32_t cr3_phys)
+{
+    uint32_t irq_flags;
+    uint32_t i;
+
+    if (cr3_phys == 0U) {
+        return;
+    }
+
+    irq_flags = spinlock_lock_irqsave(&elf_loader_lock);
+    for (i = 0U; i < PROCESS_MAX_COUNT; i++) {
+        if (elf_trackers[i].cr3 == cr3_phys) {
+            elf_trackers[i].cr3 = 0U;
+            elf_trackers[i].active_count = 0U;
+            break;
+        }
+    }
+    spinlock_unlock_irqrestore(&elf_loader_lock, irq_flags);
 }
 
 int elf_load_user_image_from_vfs(const char *path, struct elf_user_image *loaded)

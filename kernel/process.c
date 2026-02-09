@@ -3,13 +3,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "elf.h"
 #include "heap.h"
+#include "paging.h"
+#include "pmm.h"
 #include "serial.h"
 #include "spinlock.h"
 #include "tss.h"
 
 #define PROCESS_USER_HEAP_BASE    0x09000000U
 #define PROCESS_USER_HEAP_LIMIT   0x0A000000U
+#define PROCESS_PAGE_DIR_ENTRIES  1024U
+#define PROCESS_KERNEL_PD_INDEX   768U
+#define PROCESS_RECURSIVE_PD_IDX  1023U
+#define PROCESS_RECURSIVE_PD_VA   0xFFFFF000U
+#define PROCESS_TMP_PD_VA         0xDFFC0000U
+#define PROCESS_TMP_PT_VA         0xDFFC1000U
 
 static struct process process_table[PROCESS_MAX_COUNT];
 static uint32_t process_next_pid = 1U;
@@ -40,6 +49,116 @@ static uint32_t read_cr3(void)
     uint32_t value;
     __asm__ volatile ("mov %%cr3, %0" : "=r"(value));
     return value;
+}
+
+static void write_cr3(uint32_t value)
+{
+    __asm__ volatile ("mov %0, %%cr3" : : "r"(value) : "memory");
+}
+
+static int process_map_temp_page(uint32_t virt_addr, uint32_t phys_addr)
+{
+    if (paging_get_phys_addr(virt_addr) != 0U) {
+        return -1;
+    }
+
+    return paging_map_page(virt_addr, phys_addr, PAGE_WRITABLE);
+}
+
+static void process_unmap_temp_page(uint32_t virt_addr)
+{
+    (void)paging_unmap_page(virt_addr);
+}
+
+static int process_create_address_space(uint32_t *cr3_out)
+{
+    uint32_t pd_phys;
+    uint32_t *new_pd;
+    uint32_t *cur_pd;
+    uint32_t i;
+
+    if (cr3_out == 0) {
+        return -1;
+    }
+
+    pd_phys = pmm_alloc_frame();
+    if (pd_phys == 0U) {
+        return -1;
+    }
+
+    if (process_map_temp_page(PROCESS_TMP_PD_VA, pd_phys) != 0) {
+        pmm_free_frame(pd_phys);
+        return -1;
+    }
+
+    new_pd = (uint32_t *)(uintptr_t)PROCESS_TMP_PD_VA;
+    for (i = 0U; i < PROCESS_PAGE_DIR_ENTRIES; i++) {
+        new_pd[i] = 0U;
+    }
+
+    cur_pd = (uint32_t *)(uintptr_t)PROCESS_RECURSIVE_PD_VA;
+    for (i = PROCESS_KERNEL_PD_INDEX; i < PROCESS_RECURSIVE_PD_IDX; i++) {
+        new_pd[i] = cur_pd[i];
+    }
+
+    new_pd[PROCESS_RECURSIVE_PD_IDX] = (pd_phys & PAGE_FRAME_MASK)
+                                     | PAGE_PRESENT
+                                     | PAGE_WRITABLE;
+
+    process_unmap_temp_page(PROCESS_TMP_PD_VA);
+    *cr3_out = pd_phys;
+    return 0;
+}
+
+static void process_destroy_address_space(uint32_t cr3_phys)
+{
+    uint32_t *pd;
+    uint32_t pdi;
+
+    if (cr3_phys == 0U || cr3_phys == read_cr3()) {
+        return;
+    }
+
+    if (process_map_temp_page(PROCESS_TMP_PD_VA, cr3_phys) != 0) {
+        return;
+    }
+
+    pd = (uint32_t *)(uintptr_t)PROCESS_TMP_PD_VA;
+
+    for (pdi = 0U; pdi < PROCESS_KERNEL_PD_INDEX; pdi++) {
+        uint32_t pde = pd[pdi];
+        uint32_t pt_phys;
+        uint32_t *pt;
+        uint32_t pti;
+
+        if ((pde & PAGE_PRESENT) == 0U) {
+            continue;
+        }
+
+        pt_phys = pde & PAGE_FRAME_MASK;
+        if (process_map_temp_page(PROCESS_TMP_PT_VA, pt_phys) != 0) {
+            continue;
+        }
+
+        pt = (uint32_t *)(uintptr_t)PROCESS_TMP_PT_VA;
+        for (pti = 0U; pti < PROCESS_PAGE_DIR_ENTRIES; pti++) {
+            uint32_t pte = pt[pti];
+
+            if ((pte & PAGE_PRESENT) == 0U) {
+                continue;
+            }
+
+            pmm_free_frame(pte & PAGE_FRAME_MASK);
+            pt[pti] = 0U;
+        }
+
+        process_unmap_temp_page(PROCESS_TMP_PT_VA);
+        pmm_free_frame(pt_phys);
+        pd[pdi] = 0U;
+    }
+
+    process_unmap_temp_page(PROCESS_TMP_PD_VA);
+    pmm_free_frame(cr3_phys);
 }
 
 static void copy_name(char *dst, const char *src, uint32_t dst_len)
@@ -155,6 +274,11 @@ static void release_process_slot(uint32_t index)
         return;
     }
 
+    if (proc->owns_address_space != 0U) {
+        elf_forget_address_space(proc->cr3);
+        process_destroy_address_space(proc->cr3);
+    }
+
     if (proc->kernel_stack_base != 0) {
         kfree(proc->kernel_stack_base);
     }
@@ -165,6 +289,7 @@ static void release_process_slot(uint32_t index)
     proc->ebp = 0U;
     proc->eip = 0U;
     proc->cr3 = 0U;
+    proc->owns_address_space = 0U;
     proc->kernel_stack_base = 0;
     proc->kernel_stack_size = 0U;
     proc->entry = 0;
@@ -268,6 +393,7 @@ void process_init(void)
         process_table[i].ebp = 0U;
         process_table[i].eip = 0U;
         process_table[i].cr3 = 0U;
+        process_table[i].owns_address_space = 0U;
         process_table[i].kernel_stack_base = 0;
         process_table[i].kernel_stack_size = 0U;
         process_table[i].entry = 0;
@@ -290,6 +416,7 @@ void process_init(void)
     bootstrap->ebp = read_ebp();
     bootstrap->eip = 0U;
     bootstrap->cr3 = read_cr3();
+    bootstrap->owns_address_space = 0U;
     bootstrap->user_break = PROCESS_USER_HEAP_BASE;
     bootstrap->user_image_path[0] = '\0';
     copy_name(bootstrap->name, "kernel_main", PROCESS_NAME_MAX_LEN);
@@ -324,6 +451,7 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     int32_t slot;
     struct process *proc;
     void *stack;
+    uint32_t process_cr3;
     uint32_t stack_top;
     uint32_t *sp;
 
@@ -340,6 +468,12 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     stack = kmalloc(PROCESS_KERNEL_STACK_SIZE);
     if (stack == 0) {
         serial_puts("[PROC] Failed to allocate kernel stack\n");
+        return -1;
+    }
+
+    if (process_create_address_space(&process_cr3) != 0) {
+        kfree(stack);
+        serial_puts("[PROC] Failed to allocate process address space\n");
         return -1;
     }
 
@@ -361,7 +495,8 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     proc->esp = (uint32_t)(uintptr_t)sp;
     proc->ebp = proc->esp;
     proc->eip = (uint32_t)(uintptr_t)process_bootstrap;
-    proc->cr3 = read_cr3();
+    proc->cr3 = process_cr3;
+    proc->owns_address_space = 1U;
     proc->kernel_stack_base = stack;
     proc->kernel_stack_size = PROCESS_KERNEL_STACK_SIZE;
     proc->entry = entry;
@@ -401,6 +536,7 @@ void process_yield(void)
 
     current_slot = process_current_index;
     current = &process_table[current_slot];
+    current->cr3 = read_cr3();
     next_slot = find_next_ready_slot(current_slot);
 
     if (next_slot < 0) {
@@ -425,6 +561,10 @@ void process_yield(void)
     next->state = PROCESS_STATE_RUNNING;
     process_current_index = (uint32_t)next_slot;
     tss_set_kernel_stack(process_kernel_stack_top(next, 0U));
+
+    if (next->cr3 != current->cr3) {
+        write_cr3(next->cr3);
+    }
 
     process_switch(&current->esp, next->esp);
 
