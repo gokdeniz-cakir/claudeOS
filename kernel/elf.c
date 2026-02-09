@@ -40,7 +40,14 @@ struct elf_space_tracker {
     uint32_t active_pages[ELF_MAX_MAPPED_PAGES];
 };
 
+struct elf_replaced_page {
+    uint32_t page;
+    uint32_t phys;
+    uint32_t flags;
+};
+
 static struct elf_space_tracker elf_trackers[PROCESS_MAX_COUNT];
+static struct elf_replaced_page elf_replaced_pages[ELF_MAX_MAPPED_PAGES];
 
 struct elf32_ehdr {
     uint8_t e_ident[ELF_EI_NIDENT];
@@ -117,6 +124,42 @@ static void cleanup_mapped_pages(const uint32_t *mapped_pages, uint32_t mapped_c
     }
 }
 
+static void restore_replaced_pages(const struct elf_replaced_page *replaced_pages,
+                                   uint32_t replaced_count)
+{
+    while (replaced_count > 0U) {
+        uint32_t restored_flags;
+        uint32_t new_phys;
+
+        replaced_count--;
+        restored_flags = replaced_pages[replaced_count].flags;
+        new_phys = paging_unmap_page(replaced_pages[replaced_count].page);
+        if (new_phys != 0U) {
+            pmm_free_frame(new_phys);
+        }
+
+        if (paging_map_page(replaced_pages[replaced_count].page,
+                            replaced_pages[replaced_count].phys,
+                            restored_flags) != 0) {
+            /*
+             * Best effort rollback. If remap fails, avoid leaking the frame;
+             * caller will still fail the load and keep prior tracker state.
+             */
+            pmm_free_frame(replaced_pages[replaced_count].phys);
+        }
+    }
+}
+
+static void free_replaced_frames(const struct elf_replaced_page *replaced_pages,
+                                 uint32_t replaced_count)
+{
+    uint32_t i;
+
+    for (i = 0U; i < replaced_count; i++) {
+        pmm_free_frame(replaced_pages[i].phys);
+    }
+}
+
 static uint32_t elf_read_cr3(void)
 {
     uint32_t value;
@@ -175,6 +218,7 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 {
     const struct elf32_ehdr *ehdr;
     const struct elf32_phdr *phdr_table;
+    struct elf_replaced_page *replaced_pages = elf_replaced_pages;
     struct elf_space_tracker *tracker;
     uint32_t active_count;
     uint32_t current_cr3;
@@ -182,7 +226,14 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
     uint32_t phdr_bytes;
     uint32_t *mapped_pages = elf_mapped_pages;
     uint32_t mapped_count = 0U;
+    uint32_t replaced_count = 0U;
     uint32_t i;
+
+#define ELF_LOAD_FAIL() do { \
+    cleanup_mapped_pages(mapped_pages, mapped_count); \
+    restore_replaced_pages(replaced_pages, replaced_count); \
+    return -1; \
+} while (0)
 
     if (image == 0 || loaded == 0 || image_size < sizeof(struct elf32_ehdr)) {
         return -1;
@@ -239,20 +290,17 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
         }
 
         if (ph->p_filesz > ph->p_memsz) {
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
         }
 
         if (add_overflow_u32(ph->p_offset, ph->p_filesz, &file_end) != 0U ||
             file_end > image_size) {
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
         }
 
         if (add_overflow_u32(ph->p_vaddr, ph->p_memsz, &seg_end) != 0U ||
             ph->p_vaddr >= USER_KERNEL_SPLIT || seg_end > USER_KERNEL_SPLIT) {
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
         }
 
         page_start = ph->p_vaddr & PAGE_FRAME_MASK;
@@ -268,23 +316,39 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 
             if (existing_phys != 0U) {
                 if (page_was_mapped_by_loader(mapped_pages, mapped_count, page) == 0U) {
+                    uint32_t old_flags;
+
                     if (page_was_mapped_by_loader(elf_previous_pages,
                                                   previous_count,
                                                   page) == 0U) {
-                        cleanup_mapped_pages(mapped_pages, mapped_count);
-                        return -1;
+                        ELF_LOAD_FAIL();
+                    }
+
+                    if (replaced_count >= ELF_MAX_MAPPED_PAGES) {
+                        ELF_LOAD_FAIL();
+                    }
+
+                    if (paging_get_page_flags(page, &old_flags) != 0) {
+                        ELF_LOAD_FAIL();
                     }
 
                     existing_phys = paging_unmap_page(page);
-                    if (existing_phys != 0U) {
-                        pmm_free_frame(existing_phys);
+                    if (existing_phys == 0U) {
+                        ELF_LOAD_FAIL();
                     }
+
+                    replaced_pages[replaced_count].page = page;
+                    replaced_pages[replaced_count].phys = existing_phys;
+                    replaced_pages[replaced_count].flags = PAGE_USER;
+                    if ((old_flags & PAGE_WRITABLE) != 0U) {
+                        replaced_pages[replaced_count].flags |= PAGE_WRITABLE;
+                    }
+                    replaced_count++;
                 } else {
                     /* Overlapping PT_LOAD segments may require stronger perms later. */
                     if ((copy_flags & PAGE_WRITABLE) != 0U) {
                         if (paging_or_page_flags(page, PAGE_USER | PAGE_WRITABLE) != 0) {
-                            cleanup_mapped_pages(mapped_pages, mapped_count);
-                            return -1;
+                            ELF_LOAD_FAIL();
                         }
                     }
 
@@ -294,20 +358,17 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
             }
 
             if (mapped_count >= ELF_MAX_MAPPED_PAGES) {
-                cleanup_mapped_pages(mapped_pages, mapped_count);
-                return -1;
+                ELF_LOAD_FAIL();
             }
 
             existing_phys = pmm_alloc_frame();
             if (existing_phys == 0U) {
-                cleanup_mapped_pages(mapped_pages, mapped_count);
-                return -1;
+                ELF_LOAD_FAIL();
             }
 
             if (paging_map_page(page, existing_phys, copy_flags) != 0) {
                 pmm_free_frame(existing_phys);
-                cleanup_mapped_pages(mapped_pages, mapped_count);
-                return -1;
+                ELF_LOAD_FAIL();
             }
 
             mapped_pages[mapped_count] = page;
@@ -325,29 +386,43 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
     }
 
     if (ehdr->e_entry >= USER_KERNEL_SPLIT || paging_get_phys_addr(ehdr->e_entry) == 0U) {
-        cleanup_mapped_pages(mapped_pages, mapped_count);
-        return -1;
+        ELF_LOAD_FAIL();
     }
 
     if (paging_get_phys_addr(ELF_USER_STACK_PAGE) != 0U) {
         uint32_t stack_existing;
+        uint32_t old_flags;
 
         if (page_was_mapped_by_loader(elf_previous_pages,
                                       previous_count,
                                       ELF_USER_STACK_PAGE) == 0U) {
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
+        }
+
+        if (replaced_count >= ELF_MAX_MAPPED_PAGES) {
+            ELF_LOAD_FAIL();
+        }
+
+        if (paging_get_page_flags(ELF_USER_STACK_PAGE, &old_flags) != 0) {
+            ELF_LOAD_FAIL();
         }
 
         stack_existing = paging_unmap_page(ELF_USER_STACK_PAGE);
-        if (stack_existing != 0U) {
-            pmm_free_frame(stack_existing);
+        if (stack_existing == 0U) {
+            ELF_LOAD_FAIL();
         }
+
+        replaced_pages[replaced_count].page = ELF_USER_STACK_PAGE;
+        replaced_pages[replaced_count].phys = stack_existing;
+        replaced_pages[replaced_count].flags = PAGE_USER;
+        if ((old_flags & PAGE_WRITABLE) != 0U) {
+            replaced_pages[replaced_count].flags |= PAGE_WRITABLE;
+        }
+        replaced_count++;
     }
 
     if (mapped_count >= ELF_MAX_MAPPED_PAGES) {
-        cleanup_mapped_pages(mapped_pages, mapped_count);
-        return -1;
+        ELF_LOAD_FAIL();
     }
 
     {
@@ -355,14 +430,12 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
         uint32_t j;
 
         if (stack_phys == 0U) {
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
         }
 
         if (paging_map_page(ELF_USER_STACK_PAGE, stack_phys, PAGE_USER | PAGE_WRITABLE) != 0) {
             pmm_free_frame(stack_phys);
-            cleanup_mapped_pages(mapped_pages, mapped_count);
-            return -1;
+            ELF_LOAD_FAIL();
         }
 
         mapped_pages[mapped_count] = ELF_USER_STACK_PAGE;
@@ -375,6 +448,7 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 
     drop_previous_active_pages_not_reused(elf_previous_pages, previous_count,
                                           mapped_pages, mapped_count);
+    free_replaced_frames(replaced_pages, replaced_count);
 
     tracker->active_count = mapped_count;
     for (i = 0U; i < mapped_count; i++) {
@@ -383,6 +457,7 @@ static int elf_load_user_image_locked(const uint8_t *image, uint32_t image_size,
 
     loaded->entry = ehdr->e_entry;
     loaded->stack_top = ELF_USER_STACK_TOP;
+#undef ELF_LOAD_FAIL
     return 0;
 }
 

@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "process.h"
 #include "serial.h"
 #include "spinlock.h"
 
@@ -14,6 +15,7 @@ struct vfs_mount {
 
 struct vfs_open_file {
     uint8_t in_use;
+    uint32_t owner_pid;
     uint32_t flags;
     uint32_t position;
     struct vfs_node node;
@@ -250,6 +252,38 @@ static int32_t vfs_fd_to_index(int32_t fd)
     return index;
 }
 
+static void vfs_reset_open_file(uint32_t index)
+{
+    if (index >= VFS_MAX_OPEN_FILES) {
+        return;
+    }
+
+    vfs_open_files[index].in_use = 0U;
+    vfs_open_files[index].owner_pid = 0U;
+    vfs_open_files[index].flags = 0U;
+    vfs_open_files[index].position = 0U;
+    vfs_open_files[index].node.type = VFS_NODE_UNKNOWN;
+    vfs_open_files[index].node.inode = 0U;
+    vfs_open_files[index].node.size = 0U;
+    vfs_open_files[index].node.flags = 0U;
+    vfs_open_files[index].node.ops = 0;
+    vfs_open_files[index].node.fs_data = 0;
+}
+
+static uint8_t vfs_owner_allows_access(const struct vfs_open_file *file,
+                                       uint32_t caller_pid)
+{
+    if (file == 0) {
+        return 0U;
+    }
+
+    if (file->owner_pid == 0U || caller_pid == 0U) {
+        return 1U;
+    }
+
+    return (uint8_t)(file->owner_pid == caller_pid);
+}
+
 void vfs_init(void)
 {
     uint32_t i;
@@ -269,15 +303,7 @@ void vfs_init(void)
     }
 
     for (i = 0U; i < VFS_MAX_OPEN_FILES; i++) {
-        vfs_open_files[i].in_use = 0U;
-        vfs_open_files[i].flags = 0U;
-        vfs_open_files[i].position = 0U;
-        vfs_open_files[i].node.type = VFS_NODE_UNKNOWN;
-        vfs_open_files[i].node.inode = 0U;
-        vfs_open_files[i].node.size = 0U;
-        vfs_open_files[i].node.flags = 0U;
-        vfs_open_files[i].node.ops = 0;
-        vfs_open_files[i].node.fs_data = 0;
+        vfs_reset_open_file(i);
     }
 
     vfs_mounts[0].in_use = 1U;
@@ -393,6 +419,7 @@ int32_t vfs_open(const char *path, uint32_t flags)
 {
     struct vfs_node node;
     uint32_t irq_flags;
+    uint32_t owner_pid;
     uint32_t i;
     int32_t rc;
 
@@ -423,10 +450,13 @@ int32_t vfs_open(const char *path, uint32_t flags)
         return VFS_ERR_NOT_SUPPORTED;
     }
 
+    owner_pid = process_get_current_pid();
+
     irq_flags = spinlock_lock_irqsave(&vfs_lock);
     for (i = 0U; i < VFS_MAX_OPEN_FILES; i++) {
         if (vfs_open_files[i].in_use == 0U) {
             vfs_open_files[i].in_use = 1U;
+            vfs_open_files[i].owner_pid = owner_pid;
             vfs_open_files[i].flags = flags;
             vfs_open_files[i].position = 0U;
             vfs_open_files[i].node = node;
@@ -443,6 +473,7 @@ int32_t vfs_read(int32_t fd, void *buffer, uint32_t size)
 {
     int32_t idx;
     uint32_t irq_flags;
+    uint32_t caller_pid;
     struct vfs_open_file *file;
     int32_t bytes_read;
 
@@ -455,11 +486,17 @@ int32_t vfs_read(int32_t fd, void *buffer, uint32_t size)
         return VFS_ERR_BAD_FD;
     }
 
+    caller_pid = process_get_current_pid();
     irq_flags = spinlock_lock_irqsave(&vfs_lock);
     file = &vfs_open_files[(uint32_t)idx];
     if (file->in_use == 0U) {
         spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
         return VFS_ERR_BAD_FD;
+    }
+
+    if (vfs_owner_allows_access(file, caller_pid) == 0U) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_ACCESS;
     }
 
     if ((file->flags & VFS_OPEN_READ) == 0U) {
@@ -490,6 +527,7 @@ int32_t vfs_write(int32_t fd, const void *buffer, uint32_t size)
 {
     int32_t idx;
     uint32_t irq_flags;
+    uint32_t caller_pid;
     struct vfs_open_file *file;
     int32_t bytes_written;
 
@@ -502,11 +540,17 @@ int32_t vfs_write(int32_t fd, const void *buffer, uint32_t size)
         return VFS_ERR_BAD_FD;
     }
 
+    caller_pid = process_get_current_pid();
     irq_flags = spinlock_lock_irqsave(&vfs_lock);
     file = &vfs_open_files[(uint32_t)idx];
     if (file->in_use == 0U) {
         spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
         return VFS_ERR_BAD_FD;
+    }
+
+    if (vfs_owner_allows_access(file, caller_pid) == 0U) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_ACCESS;
     }
 
     if ((file->flags & VFS_OPEN_WRITE) == 0U) {
@@ -537,28 +581,47 @@ int32_t vfs_close(int32_t fd)
 {
     int32_t idx;
     uint32_t irq_flags;
+    uint32_t caller_pid;
 
     idx = vfs_fd_to_index(fd);
     if (idx < 0) {
         return VFS_ERR_BAD_FD;
     }
 
+    caller_pid = process_get_current_pid();
     irq_flags = spinlock_lock_irqsave(&vfs_lock);
     if (vfs_open_files[(uint32_t)idx].in_use == 0U) {
         spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
         return VFS_ERR_BAD_FD;
     }
 
-    vfs_open_files[(uint32_t)idx].in_use = 0U;
-    vfs_open_files[(uint32_t)idx].flags = 0U;
-    vfs_open_files[(uint32_t)idx].position = 0U;
-    vfs_open_files[(uint32_t)idx].node.type = VFS_NODE_UNKNOWN;
-    vfs_open_files[(uint32_t)idx].node.inode = 0U;
-    vfs_open_files[(uint32_t)idx].node.size = 0U;
-    vfs_open_files[(uint32_t)idx].node.flags = 0U;
-    vfs_open_files[(uint32_t)idx].node.ops = 0;
-    vfs_open_files[(uint32_t)idx].node.fs_data = 0;
+    if (vfs_owner_allows_access(&vfs_open_files[(uint32_t)idx], caller_pid) == 0U) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_ACCESS;
+    }
+
+    vfs_reset_open_file((uint32_t)idx);
 
     spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
     return VFS_OK;
+}
+
+void vfs_close_owned_by_pid(uint32_t pid)
+{
+    uint32_t irq_flags;
+    uint32_t i;
+
+    if (pid == 0U || vfs_initialized == 0U) {
+        return;
+    }
+
+    irq_flags = spinlock_lock_irqsave(&vfs_lock);
+    for (i = 0U; i < VFS_MAX_OPEN_FILES; i++) {
+        if (vfs_open_files[i].in_use == 0U || vfs_open_files[i].owner_pid != pid) {
+            continue;
+        }
+
+        vfs_reset_open_file(i);
+    }
+    spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
 }

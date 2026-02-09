@@ -128,6 +128,36 @@ uint32_t paging_get_phys_addr(uint32_t virt_addr)
     return (entry & PAGE_FRAME_MASK) + offset;
 }
 
+int paging_get_page_flags(uint32_t virt_addr, uint32_t *flags_out)
+{
+    uint32_t pd_index;
+    uint32_t pt_index;
+    uint32_t *pd;
+    uint32_t *pt;
+    uint32_t entry;
+
+    if (flags_out == 0) {
+        return -1;
+    }
+
+    pd_index = virt_addr >> 22;
+    pt_index = (virt_addr >> 12) & 0x3FFU;
+    pd = paging_page_directory();
+
+    if ((pd[pd_index] & PAGE_PRESENT) == 0U) {
+        return -1;
+    }
+
+    pt = paging_page_table(pd_index);
+    entry = pt[pt_index];
+    if ((entry & PAGE_PRESENT) == 0U) {
+        return -1;
+    }
+
+    *flags_out = entry & PAGE_FLAGS_MASK;
+    return 0;
+}
+
 int paging_or_page_flags(uint32_t virt_addr, uint32_t flags)
 {
     uint32_t pd_index;

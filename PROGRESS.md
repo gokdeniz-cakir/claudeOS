@@ -859,3 +859,29 @@
 - Note:
   - This addresses Task 29 isolation semantics at the page-directory level (CR3-per-process).
   - Full POSIX `fork` copy-on-write semantics and per-process FD ownership remain future work.
+
+## 2026-02-09 15:07:23 +0300 - Post-Audit Bugfixes (fork/exec + VFS lifecycle)
+- Completed: Fixed three reported correctness risks in process creation, exec failure behavior, and file-descriptor lifecycle.
+- Fix 1: `fork()` PCB race under preemption
+  - `kernel/process.c` now guards `process_create_kernel()` with an IRQ-safe creation lock.
+  - This serializes free-slot/PID assignment and address-space construction so timer preemption cannot interleave two concurrent forks into the same PCB metadata path.
+- Fix 2: `exec()` load failure rollback
+  - `kernel/elf.c` now tracks replaced old mappings during load and restores them on failure before returning.
+  - Added page-flag query helper in paging layer:
+    - `kernel/paging.h`
+    - `kernel/paging.c` (`paging_get_page_flags`)
+  - Result: failed ELF load no longer tears down the previous runnable image mappings.
+- Fix 3: global FD lifecycle leakage/interference
+  - `kernel/vfs.c` now records `owner_pid` per open file, enforces owner access on `read/write/close`, and exposes `vfs_close_owned_by_pid(pid)`.
+  - `kernel/process.c` now calls `vfs_close_owned_by_pid` on process slot release.
+  - `kernel/vfs.h` updated with the cleanup API.
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `Context_Switching.md`
+  - `Paging.md`
+  - `Processes_and_Threads.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU monitor-driven regressions pass:
+    - `elftest` still runs and prints FAT32 file contents.
+    - `forkexec` still spawns child + exec path, and both user flows reach expected terminal ring3 `#GP`.

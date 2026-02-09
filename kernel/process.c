@@ -10,6 +10,7 @@
 #include "serial.h"
 #include "spinlock.h"
 #include "tss.h"
+#include "vfs.h"
 
 #define PROCESS_USER_HEAP_BASE    0x09000000U
 #define PROCESS_USER_HEAP_LIMIT   0x0A000000U
@@ -27,6 +28,7 @@ static uint32_t process_total = 0U;
 static uint32_t process_initialized = 0U;
 static uint8_t process_preemption_enabled = 0U;
 static int32_t process_zombie_slot = -1;
+static struct spinlock process_create_lock = SPINLOCK_INITIALIZER;
 
 extern void process_switch(uint32_t *old_esp, uint32_t new_esp);
 
@@ -274,6 +276,10 @@ static void release_process_slot(uint32_t index)
         return;
     }
 
+    if (proc->pid != 0U) {
+        vfs_close_owned_by_pid(proc->pid);
+    }
+
     if (proc->owns_address_space != 0U) {
         elf_forget_address_space(proc->cr3);
         process_destroy_address_space(proc->cr3);
@@ -386,6 +392,8 @@ void process_init(void)
     uint32_t i;
     struct process *bootstrap;
 
+    spinlock_init(&process_create_lock);
+
     for (i = 0U; i < PROCESS_MAX_COUNT; i++) {
         process_table[i].pid = 0U;
         process_table[i].state = PROCESS_STATE_UNUSED;
@@ -448,30 +456,43 @@ void process_preempt_from_irq(void)
 
 int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg)
 {
+    uint32_t create_flags;
     int32_t slot;
     struct process *proc;
     void *stack;
     uint32_t process_cr3;
     uint32_t stack_top;
     uint32_t *sp;
+    int32_t pid;
+    char created_name[PROCESS_NAME_MAX_LEN];
 
-    if (process_initialized == 0U || entry == 0) {
+    if (entry == 0) {
+        return -1;
+    }
+
+    create_flags = spinlock_lock_irqsave(&process_create_lock);
+
+    if (process_initialized == 0U) {
+        spinlock_unlock_irqrestore(&process_create_lock, create_flags);
         return -1;
     }
 
     slot = find_free_slot();
     if (slot < 0) {
+        spinlock_unlock_irqrestore(&process_create_lock, create_flags);
         serial_puts("[PROC] No free PCB slots\n");
         return -1;
     }
 
     stack = kmalloc(PROCESS_KERNEL_STACK_SIZE);
     if (stack == 0) {
+        spinlock_unlock_irqrestore(&process_create_lock, create_flags);
         serial_puts("[PROC] Failed to allocate kernel stack\n");
         return -1;
     }
 
     if (process_create_address_space(&process_cr3) != 0) {
+        spinlock_unlock_irqrestore(&process_create_lock, create_flags);
         kfree(stack);
         serial_puts("[PROC] Failed to allocate process address space\n");
         return -1;
@@ -506,14 +527,18 @@ int32_t process_create_kernel(const char *name, process_entry_t entry, void *arg
     copy_name(proc->name, name, PROCESS_NAME_MAX_LEN);
 
     process_total++;
+    pid = (int32_t)proc->pid;
+    copy_name(created_name, proc->name, sizeof(created_name));
+
+    spinlock_unlock_irqrestore(&process_create_lock, create_flags);
 
     serial_puts("[PROC] Created kernel process pid=");
-    serial_put_u32(proc->pid);
+    serial_put_u32((uint32_t)pid);
     serial_puts(" name=");
-    serial_puts(proc->name);
+    serial_puts(created_name);
     serial_puts("\n");
 
-    return (int32_t)proc->pid;
+    return pid;
 }
 
 void process_yield(void)

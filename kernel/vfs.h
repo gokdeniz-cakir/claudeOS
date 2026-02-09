@@ -64,4 +64,7 @@ int32_t vfs_read(int32_t fd, void *buffer, uint32_t size);
 int32_t vfs_write(int32_t fd, const void *buffer, uint32_t size);
 int32_t vfs_close(int32_t fd);
 
+/* Close all open descriptors owned by the given process id. */
+void vfs_close_owned_by_pid(uint32_t pid);
+
 #endif /* CLAUDE_VFS_H */
