@@ -96,10 +96,10 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 26. initrd / ramdisk with tar-based format - Completed: kernel/initrd.c, kernel/initrd.h, initrd/hello.txt, initrd/etc/motd.txt, kernel/kernel.c, Makefile
 27. FAT32 read support via ATA PIO - Completed: kernel/ata.c, kernel/ata.h, kernel/fat32.c, kernel/fat32.h, kernel/io.h, kernel/kernel.c, Makefile, tools/mkfat32_image.py
 28. Syscalls: open, close, read - Completed: kernel/syscall.c, kernel/syscall.h, user/elf_demo.asm
-29. fork + exec (at least basic versions)
+29. fork + exec (at least basic versions) - Completed: kernel/syscall.c, kernel/process.c, kernel/elf.c, kernel/vfs.c, user/fork_exec_demo.asm, Makefile
 
 ### Phase 7: Shell & Userspace 
-30. Basic libc (printf, malloc, string functions)
+30. Basic libc (printf, malloc, string functions) - Completed: user/libc/*, user/libctest.c, kernel/console.c, kernel/elf.c, Makefile
 31. Shell as a userspace process
 32. Builtins: ls, cat, echo, clear, help, ps
 33. At least 2-3 standalone userspace programs

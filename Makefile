@@ -15,6 +15,8 @@ BOOT_DIR   := boot
 KERNEL_DIR := kernel
 USER_DIR   := user
 BUILD_DIR  := build
+USER_LIBC_DIR := $(USER_DIR)/libc
+USER_LIBC_INCLUDE_DIR := $(USER_LIBC_DIR)/include
 
 # --- Source files ------------------------------------------------------------
 MBR_SRC        := $(BOOT_DIR)/mbr.asm
@@ -50,6 +52,12 @@ ATA_SRC        := $(KERNEL_DIR)/ata.c
 FAT32_SRC      := $(KERNEL_DIR)/fat32.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
+LIBCTEST_SRC   := $(USER_DIR)/libctest.c
+LIBC_CRT0_SRC  := $(USER_LIBC_DIR)/crt0.asm
+LIBC_SYSCALL_SRC := $(USER_LIBC_DIR)/syscall.c
+LIBC_STDIO_SRC := $(USER_LIBC_DIR)/stdio.c
+LIBC_STRING_SRC := $(USER_LIBC_DIR)/string.c
+LIBC_MALLOC_SRC := $(USER_LIBC_DIR)/malloc.c
 LINKER_SCRIPT  := linker.ld
 INITRD_DIR     := initrd
 INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
@@ -94,6 +102,13 @@ ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
 FORK_EXEC_DEMO_OBJ := $(BUILD_DIR)/fork_exec_demo.o
 FORK_EXEC_DEMO_ELF := $(BUILD_DIR)/fork_exec_demo.elf
 FORK_EXEC_DEMO_BLOB_OBJ := $(BUILD_DIR)/fork_exec_demo_blob.o
+LIBCTEST_OBJ   := $(BUILD_DIR)/libctest.o
+LIBC_CRT0_OBJ  := $(BUILD_DIR)/libc_crt0.o
+LIBC_SYSCALL_OBJ := $(BUILD_DIR)/libc_syscall.o
+LIBC_STDIO_OBJ := $(BUILD_DIR)/libc_stdio.o
+LIBC_STRING_OBJ := $(BUILD_DIR)/libc_string.o
+LIBC_MALLOC_OBJ := $(BUILD_DIR)/libc_malloc.o
+LIBCTEST_ELF   := $(BUILD_DIR)/libctest.elf
 INITRD_ROOT    := $(BUILD_DIR)/initrd_root
 INITRD_ROOT_STAMP := $(INITRD_ROOT)/.stamp
 INITRD_TAR     := $(BUILD_DIR)/initrd.tar
@@ -107,15 +122,16 @@ NASMFLAGS_BIN  := -f bin
 NASMFLAGS_ELF  := -f elf32
 CFLAGS         := -std=c99 -Wall -Wextra -Werror -ffreestanding -fno-builtin \
                   -nostdlib -m32 -O2 -g
+USER_CFLAGS    := $(CFLAGS) -I$(USER_LIBC_INCLUDE_DIR)
 LDFLAGS        := -T $(LINKER_SCRIPT) -nostdlib -lgcc -Wl,--oformat,binary
 QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
                   -drive format=raw,file=$(FAT32_IMG),if=ide,index=1 \
                   -no-reboot -no-shutdown -serial stdio
 
 # --- Boot image limits -------------------------------------------------------
-KERNEL_MAX_SECTORS := 124
-KERNEL_MAX_BYTES   := 63488
-OS_IMAGE_SIZE      := 65536
+KERNEL_MAX_SECTORS := 190
+KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
+OS_IMAGE_SIZE      := 262144
 
 # --- Phony targets -----------------------------------------------------------
 .PHONY: all run clean
@@ -124,11 +140,11 @@ OS_IMAGE_SIZE      := 65536
 all: $(OS_BIN)
 
 # --- MBR (flat binary, 512 bytes) -------------------------------------------
-$(MBR_BIN): $(MBR_SRC) | $(BUILD_DIR)
+$(MBR_BIN): $(MBR_SRC) Makefile | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
 # --- Stage 2 (flat binary, padded to 1024 bytes, 2 sectors) -----------------
-$(STAGE2_BIN): $(STAGE2_SRC) | $(BUILD_DIR)
+$(STAGE2_BIN): $(STAGE2_SRC) Makefile | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
 # --- Kernel entry (ELF object) ----------------------------------------------
@@ -266,12 +282,38 @@ $(FORK_EXEC_DEMO_ELF): $(FORK_EXEC_DEMO_OBJ) | $(BUILD_DIR)
 $(FORK_EXEC_DEMO_BLOB_OBJ): $(FORK_EXEC_DEMO_ELF) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
+# --- Userspace libc smoke-test ELF build chain --------------------------------
+$(LIBC_CRT0_OBJ): $(LIBC_CRT0_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(LIBC_SYSCALL_OBJ): $(LIBC_SYSCALL_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_STDIO_OBJ): $(LIBC_STDIO_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_STRING_OBJ): $(LIBC_STRING_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_MALLOC_OBJ): $(LIBC_MALLOC_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBCTEST_OBJ): $(LIBCTEST_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBCTEST_ELF): $(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
+                 $(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ) $(LIBCTEST_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -Ttext 0x08050000 -e _start -o $@ \
+		$(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
+		$(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ) $(LIBCTEST_OBJ)
+
 # --- Embedded initrd tar image build chain -----------------------------------
-$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) | $(BUILD_DIR)
+$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) | $(BUILD_DIR)
 	rm -rf $(INITRD_ROOT)
 	mkdir -p $(INITRD_ROOT)
 	cp -R $(INITRD_DIR)/. $(INITRD_ROOT)/
 	cp $(ELF_DEMO_ELF) $(INITRD_ROOT)/elf_demo.elf
+	cp $(LIBCTEST_ELF) $(INITRD_ROOT)/libctest.elf
 	touch $@
 
 $(INITRD_TAR): $(INITRD_ROOT_STAMP) | $(BUILD_DIR)
@@ -298,7 +340,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)
 
-# --- Final disk image: MBR + Stage2 + Kernel, padded to 64KB ----------------
+# --- Final disk image: MBR + Stage2 + Kernel, padded to fixed image size -----
 $(OS_BIN): $(MBR_BIN) $(STAGE2_BIN) $(KERNEL_BIN) | $(BUILD_DIR)
 	@kernel_size=$$(wc -c < $(KERNEL_BIN)); \
 	if [ $$kernel_size -gt $(KERNEL_MAX_BYTES) ]; then \

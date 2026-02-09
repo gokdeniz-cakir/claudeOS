@@ -24,4 +24,7 @@ void elf_run_embedded_test(void);
 /* Run the embedded fork+exec probe binary in ring 3. */
 void elf_run_fork_exec_test(void);
 
+/* Load libc smoke test ELF from initrd and run it in ring 3. */
+void elf_run_libc_test(void);
+
 #endif /* CLAUDE_ELF_H */

@@ -885,3 +885,44 @@
   - Headless QEMU monitor-driven regressions pass:
     - `elftest` still runs and prints FAT32 file contents.
     - `forkexec` still spawns child + exec path, and both user flows reach expected terminal ring3 `#GP`.
+
+## 2026-02-09 16:05:47 +0300 - Phase 7, Task 30: Basic Userspace libc
+- Completed: Added a minimal userspace libc and a C smoke-test user program.
+- New userspace libc files:
+  - `user/libc/include/unistd.h`, `user/libc/include/stdio.h`, `user/libc/include/stdlib.h`, `user/libc/include/string.h`
+  - `user/libc/syscall.c` (INT 0x80 wrappers for `write/open/read/close/fork/exec/sbrk/exit`)
+  - `user/libc/stdio.c` (`putchar`, `puts`, small `printf` with `%s/%c/%d/%u/%x/%%`)
+  - `user/libc/string.c` (`strlen`, `strcmp`, `strncmp`, `strcpy`, `memcpy`, `memmove`, `memset`)
+  - `user/libc/malloc.c` (simple `sbrk`-backed free-list allocator)
+  - `user/libc/crt0.asm` (`_start -> main -> exit`)
+- Added `user/libctest.c` smoke test covering:
+  - libc `printf`
+  - libc `malloc/free` + string ops
+  - syscall-backed file I/O (`open/read/close`) against `/fat/HELLO.TXT`
+- Kernel/runtime integration:
+  - `kernel/console.c`: added `libctest` command and help text update.
+  - `kernel/elf.c` / `kernel/elf.h`: added `elf_run_libc_test()`.
+  - `libctest` now runs in a spawned kernel process (pid != 1), so libc `exit()` can terminate cleanly without stalling the bootstrap task.
+- Build/integration updates (`Makefile`):
+  - Added build/link chain for libc objects + `libctest.elf`.
+  - Added `libctest.elf` into initrd staging (`build/initrd_root/libctest.elf`).
+  - Added `Makefile` as dependency of `mbr.bin`/`stage2.bin` so `KERNEL_MAX_SECTORS` changes force bootloader rebuilds.
+- Issue encountered and resolved:
+  - Increasing `KERNEL_MAX_SECTORS` too high caused boot failure because current MBR two-chunk INT13 extension reads exceeded BIOS request limits.
+  - Set `KERNEL_MAX_SECTORS` to `190` (safe with current `65 + 127` split) and kept larger fixed image padding (`OS_IMAGE_SIZE=262144`) for headroom.
+- Reference docs consulted:
+  - `docs/core/C_Library.md`
+  - `docs/core/System_Calls.md`
+  - `docs/core/ELF.md`
+- Verified:
+  - `make clean && make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU boot smoke (`-display none -serial file`) confirms no regressions in PMM/VFS/initrd/FAT32/scheduler init.
+  - Headless QEMU monitor `sendkey` test (`-monitor stdio`) for `libctest` confirms:
+    - `[CONSOLE] libctest`
+    - `[ELF] spawned libc test process`
+    - `[LIBC] user C program started`
+    - `[LIBC] malloc+string ready (len=26)`
+    - `[LIBC] read bytes=39`
+    - `Hello from ClaudeOS FAT32 via ATA PIO.`
+    - Console remains responsive afterward (`help` still works).
+  - Regression spot checks (headless `sendkey`) confirm `elftest` and `forkexec` still behave as before.

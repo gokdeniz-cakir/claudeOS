@@ -28,6 +28,7 @@
 #define ELF_MAX_MAPPED_PAGES    1024U
 #define ELF_MAX_FILE_SIZE       (1024U * 1024U)
 #define ELF_DEMO_VFS_PATH       "/elf_demo.elf"
+#define ELF_LIBCTEST_VFS_PATH   "/libctest.elf"
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
@@ -598,4 +599,43 @@ void elf_run_fork_exec_test(void)
     serial_puts("[ELF] loaded fork+exec probe (ring3 jump)\n");
 
     usermode_enter_ring3(loaded.entry, loaded.stack_top);
+}
+
+static void elf_run_user_image_task(void *arg)
+{
+    const char *path = (const char *)arg;
+    struct elf_user_image loaded;
+
+    if (path == 0 || path[0] == '\0') {
+        serial_puts("[ELF] user image task missing path\n");
+        return;
+    }
+
+    if (elf_load_user_image_from_vfs(path, &loaded) != 0) {
+        serial_puts("[ELF] user image task load failed\n");
+        return;
+    }
+
+    (void)process_set_current_image_path(path);
+    (void)process_set_current_user_break(process_user_heap_base());
+    process_refresh_tss_stack();
+
+    serial_puts("[ELF] user image task entering ring3\n");
+    usermode_enter_ring3(loaded.entry, loaded.stack_top);
+}
+
+void elf_run_libc_test(void)
+{
+    int32_t pid;
+
+    pid = process_create_kernel("libctest", elf_run_user_image_task,
+                                (void *)ELF_LIBCTEST_VFS_PATH);
+    if (pid < 0) {
+        vga_puts("[ELF] libc test spawn failed.\n");
+        serial_puts("[ELF] libc test spawn failed\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned libc test process.\n");
+    serial_puts("[ELF] spawned libc test process\n");
 }
