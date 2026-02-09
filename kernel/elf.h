@@ -30,4 +30,10 @@ void elf_run_libc_test(void);
 /* Spawn userspace shell process from initrd ELF image. */
 void elf_run_shell(void);
 
+/* Spawn standalone userspace demos from initrd ELF images. */
+void elf_run_uhello(void);
+void elf_run_ucat(void);
+void elf_run_uexec(void);
+void elf_run_apps_demo(void);
+
 #endif /* CLAUDE_ELF_H */

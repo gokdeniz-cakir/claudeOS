@@ -42,6 +42,7 @@ static void console_execute_line(void)
 {
     if (console_line_equals("help") != 0U) {
         vga_puts("Commands: help, ring3test, elftest, forkexec, libctest, shell\n");
+        vga_puts("          uhello, ucat, uexec, appsdemo\n");
         serial_puts("[CONSOLE] help shown\n");
         return;
     }
@@ -68,6 +69,26 @@ static void console_execute_line(void)
 
     if (console_line_equals("shell") != 0U) {
         elf_run_shell();
+        return;
+    }
+
+    if (console_line_equals("uhello") != 0U) {
+        elf_run_uhello();
+        return;
+    }
+
+    if (console_line_equals("ucat") != 0U) {
+        elf_run_ucat();
+        return;
+    }
+
+    if (console_line_equals("uexec") != 0U) {
+        elf_run_uexec();
+        return;
+    }
+
+    if (console_line_equals("appsdemo") != 0U) {
+        elf_run_apps_demo();
         return;
     }
 }

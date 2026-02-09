@@ -30,6 +30,9 @@
 #define ELF_DEMO_VFS_PATH       "/elf_demo.elf"
 #define ELF_LIBCTEST_VFS_PATH   "/libctest.elf"
 #define ELF_SHELL_VFS_PATH      "/shell.elf"
+#define ELF_UHELLO_VFS_PATH     "/uhello.elf"
+#define ELF_UCAT_VFS_PATH       "/ucat.elf"
+#define ELF_UEXEC_VFS_PATH      "/uexec.elf"
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
@@ -636,6 +639,12 @@ static int32_t elf_spawn_vfs_user_process(const char *proc_name,
                                  (void *)image_path);
 }
 
+static void elf_log_spawn_failure(const char *message)
+{
+    vga_puts(message);
+    serial_puts(message);
+}
+
 void elf_run_libc_test(void)
 {
     int32_t pid;
@@ -664,4 +673,56 @@ void elf_run_shell(void)
 
     vga_puts("[ELF] spawned userspace shell.\n");
     serial_puts("[ELF] spawned userspace shell\n");
+}
+
+void elf_run_uhello(void)
+{
+    int32_t pid;
+
+    pid = elf_spawn_vfs_user_process("uhello", ELF_UHELLO_VFS_PATH);
+    if (pid < 0) {
+        elf_log_spawn_failure("[ELF] uhello spawn failed.\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned uhello process.\n");
+    serial_puts("[ELF] spawned uhello process\n");
+}
+
+void elf_run_ucat(void)
+{
+    int32_t pid;
+
+    pid = elf_spawn_vfs_user_process("ucat", ELF_UCAT_VFS_PATH);
+    if (pid < 0) {
+        elf_log_spawn_failure("[ELF] ucat spawn failed.\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned ucat process.\n");
+    serial_puts("[ELF] spawned ucat process\n");
+}
+
+void elf_run_uexec(void)
+{
+    int32_t pid;
+
+    pid = elf_spawn_vfs_user_process("uexec", ELF_UEXEC_VFS_PATH);
+    if (pid < 0) {
+        elf_log_spawn_failure("[ELF] uexec spawn failed.\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned uexec process.\n");
+    serial_puts("[ELF] spawned uexec process\n");
+}
+
+void elf_run_apps_demo(void)
+{
+    vga_puts("[ELF] standalone apps demo started.\n");
+    serial_puts("[ELF] standalone apps demo started\n");
+
+    elf_run_uhello();
+    elf_run_ucat();
+    elf_run_uexec();
 }

@@ -115,6 +115,15 @@ static void shell_print_ls_root(void)
     if (shell_file_exists("/shell.elf") != 0) {
         puts("shell.elf");
     }
+    if (shell_file_exists("/uhello.elf") != 0) {
+        puts("uhello.elf");
+    }
+    if (shell_file_exists("/ucat.elf") != 0) {
+        puts("ucat.elf");
+    }
+    if (shell_file_exists("/uexec.elf") != 0) {
+        puts("uexec.elf");
+    }
 }
 
 static void shell_print_ls_etc(void)

@@ -1000,3 +1000,49 @@
   - Regression checks:
     - `libctest` still passes.
     - `elftest` still reaches expected terminal ring3 `#GP`.
+
+## 2026-02-09 16:49:25 +0300 - Phase 7, Task 33: Standalone Userspace Programs
+- Completed: Added 3 standalone ring3 ELF programs and integrated launch commands from the kernel console.
+- New userspace programs:
+  - `user/uhello.asm`:
+    - simple `write` + `exit` demo (`/uhello.elf`)
+  - `user/ucat.asm`:
+    - standalone file-read demo (`open/read/close` on `/fat/HELLO.TXT`) (`/ucat.elf`)
+  - `user/uexec.asm`:
+    - `exec("/uhello.elf")` chain demo (`/uexec.elf`)
+- Build/initrd integration (`Makefile`):
+  - added assembly+link rules for `uhello.elf`, `ucat.elf`, `uexec.elf`
+  - staged all three binaries into initrd root:
+    - `/uhello.elf`
+    - `/ucat.elf`
+    - `/uexec.elf`
+- Kernel launch integration:
+  - `kernel/elf.c`, `kernel/elf.h`:
+    - added:
+      - `elf_run_uhello()`
+      - `elf_run_ucat()`
+      - `elf_run_uexec()`
+      - `elf_run_apps_demo()`
+  - `kernel/console.c`:
+    - added commands:
+      - `uhello`
+      - `ucat`
+      - `uexec`
+      - `appsdemo`
+    - updated `help` output accordingly
+- Shell polish:
+  - `user/shell.c` root listing now includes `uhello.elf`, `ucat.elf`, and `uexec.elf` when present.
+- Reference docs consulted:
+  - `docs/core/System_Calls.md`
+  - `docs/core/Loading_a_Process.md`
+  - `docs/core/Creating_A_Shell.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - Headless QEMU monitor `sendkey` run (`build/serial_task33_apps.log`) confirms:
+    - `uhello` prints standalone message
+    - `ucat` reads and prints FAT32 `HELLO.TXT`
+    - `uexec` execs into `uhello`
+    - `appsdemo` launches all 3 successfully
+  - Regression check (`build/serial_task33_regression.log`) confirms:
+    - `libctest` still passes
+    - `shell` still runs and now lists the three new standalone ELFs in `ls /`

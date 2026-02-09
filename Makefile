@@ -54,6 +54,9 @@ ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
 LIBCTEST_SRC   := $(USER_DIR)/libctest.c
 SHELL_SRC      := $(USER_DIR)/shell.c
+UHELLO_SRC     := $(USER_DIR)/uhello.asm
+UCAT_SRC       := $(USER_DIR)/ucat.asm
+UEXEC_SRC      := $(USER_DIR)/uexec.asm
 LIBC_CRT0_SRC  := $(USER_LIBC_DIR)/crt0.asm
 LIBC_SYSCALL_SRC := $(USER_LIBC_DIR)/syscall.c
 LIBC_STDIO_SRC := $(USER_LIBC_DIR)/stdio.c
@@ -112,6 +115,12 @@ LIBC_MALLOC_OBJ := $(BUILD_DIR)/libc_malloc.o
 LIBCTEST_ELF   := $(BUILD_DIR)/libctest.elf
 SHELL_OBJ      := $(BUILD_DIR)/shell.o
 SHELL_ELF      := $(BUILD_DIR)/shell.elf
+UHELLO_OBJ     := $(BUILD_DIR)/uhello.o
+UHELLO_ELF     := $(BUILD_DIR)/uhello.elf
+UCAT_OBJ       := $(BUILD_DIR)/ucat.o
+UCAT_ELF       := $(BUILD_DIR)/ucat.elf
+UEXEC_OBJ      := $(BUILD_DIR)/uexec.o
+UEXEC_ELF      := $(BUILD_DIR)/uexec.elf
 INITRD_ROOT    := $(BUILD_DIR)/initrd_root
 INITRD_ROOT_STAMP := $(BUILD_DIR)/initrd_root.stamp
 INITRD_TAR     := $(BUILD_DIR)/initrd.tar
@@ -318,14 +327,36 @@ $(SHELL_ELF): $(USER_LIBC_OBJS) $(SHELL_OBJ) | $(BUILD_DIR)
 	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08054000 -e _start -o $@ \
 		$(USER_LIBC_OBJS) $(SHELL_OBJ)
 
+$(UHELLO_OBJ): $(UHELLO_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(UHELLO_ELF): $(UHELLO_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08058000 -e _start -o $@ $<
+
+$(UCAT_OBJ): $(UCAT_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(UCAT_ELF): $(UCAT_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x0805A000 -e _start -o $@ $<
+
+$(UEXEC_OBJ): $(UEXEC_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
+$(UEXEC_ELF): $(UEXEC_OBJ) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x0805C000 -e _start -o $@ $<
+
 # --- Embedded initrd tar image build chain -----------------------------------
-$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) $(SHELL_ELF) | $(BUILD_DIR)
+$(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) \
+	$(SHELL_ELF) $(UHELLO_ELF) $(UCAT_ELF) $(UEXEC_ELF) | $(BUILD_DIR)
 	rm -rf $(INITRD_ROOT)
 	mkdir -p $(INITRD_ROOT)
 	cp -R $(INITRD_DIR)/. $(INITRD_ROOT)/
 	cp $(ELF_DEMO_ELF) $(INITRD_ROOT)/elf_demo.elf
 	cp $(LIBCTEST_ELF) $(INITRD_ROOT)/libctest.elf
 	cp $(SHELL_ELF) $(INITRD_ROOT)/shell.elf
+	cp $(UHELLO_ELF) $(INITRD_ROOT)/uhello.elf
+	cp $(UCAT_ELF) $(INITRD_ROOT)/ucat.elf
+	cp $(UEXEC_ELF) $(INITRD_ROOT)/uexec.elf
 	touch $@
 
 $(INITRD_TAR): $(INITRD_ROOT_STAMP) | $(BUILD_DIR)
