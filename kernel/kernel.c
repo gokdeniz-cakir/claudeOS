@@ -14,6 +14,7 @@
 #include "process.h"
 #include "tss.h"
 #include "syscall.h"
+#include "vfs.h"
 
 static void demo_delay(void)
 {
@@ -101,6 +102,10 @@ void kernel_main(void)
 
     syscall_init();
     vga_puts("INT 0x80 syscall interface initialized.\n");
+
+    vfs_init();
+    vga_puts("VFS initialized.\n");
+    serial_puts("VFS initialized\n");
 
     tss_init();
     vga_puts("TSS initialized.\n");

@@ -626,3 +626,26 @@
   - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
   - QEMU serial smoke boot (`make run`) reaches stable init/scheduler/console path with no regressions.
   - Image sizing remains within cap (`kernel.bin` = 25504 bytes, `os.bin` = 65536 bytes).
+
+## 2026-02-09 13:37:41 +0300 - Phase 6, Task 25: VFS Layer
+- Completed: Added an initial VFS core layer with mount-point, vnode, and open-file abstractions.
+- New files:
+  - `kernel/vfs.h`
+  - `kernel/vfs.c`
+- VFS core capabilities implemented:
+  - Vnode + ops interface (`lookup`, `read`, `write`) with node type metadata.
+  - Path normalization and absolute-path resolution across a mount table (longest-prefix mount match).
+  - Mount API (`vfs_mount`) with mount replacement on existing mount path.
+  - Kernel file-handle API (`vfs_open`, `vfs_read`, `vfs_write`, `vfs_close`) with position tracking.
+  - IRQ-safe internal state protection (mount table + open-file table) via spinlock helpers.
+  - Default empty root mount at `/` installed during `vfs_init()`.
+- Integration:
+  - `kernel/kernel.c` now initializes VFS during boot (`vfs_init()`), with VGA/serial status output.
+  - `Makefile` now compiles/links `kernel/vfs.c`.
+- Reference docs consulted from `docs/core/`:
+  - `VFS.md`
+  - `Hierarchical_VFS_Theory.md`
+  - `File_Systems.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - `make run` reaches stable boot, including `[VFS] initialized`, and continues through scheduler + console initialization.

@@ -44,6 +44,7 @@ USERMODE_SRC   := $(KERNEL_DIR)/usermode.c
 SYSCALL_SRC    := $(KERNEL_DIR)/syscall.c
 SYSCALL_STUBS_SRC := $(KERNEL_DIR)/syscall_stubs.asm
 ELF_SRC        := $(KERNEL_DIR)/elf.c
+VFS_SRC        := $(KERNEL_DIR)/vfs.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 LINKER_SCRIPT  := linker.ld
 
@@ -75,6 +76,7 @@ USERMODE_OBJ   := $(BUILD_DIR)/usermode.o
 SYSCALL_OBJ    := $(BUILD_DIR)/syscall.o
 SYSCALL_STUBS_OBJ := $(BUILD_DIR)/syscall_stubs.o
 ELF_OBJ        := $(BUILD_DIR)/elf.o
+VFS_OBJ        := $(BUILD_DIR)/vfs.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
 ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
@@ -209,6 +211,10 @@ $(SYSCALL_STUBS_OBJ): $(SYSCALL_STUBS_SRC) | $(BUILD_DIR)
 $(ELF_OBJ): $(ELF_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- VFS core layer (ELF object) ---------------------------------------------
+$(VFS_OBJ): $(VFS_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Embedded user ELF demo build chain --------------------------------------
 $(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
@@ -227,7 +233,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
-               $(ELF_OBJ) $(ELF_DEMO_BLOB_OBJ)
+               $(ELF_OBJ) $(VFS_OBJ) $(ELF_DEMO_BLOB_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

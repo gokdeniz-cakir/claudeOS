@@ -92,7 +92,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 24. ELF loader (load simple static ELF binaries) - Completed: kernel/elf.c, kernel/elf.h, user/elf_demo.asm, Makefile, kernel/console.c
 
 ### Phase 6: Filesystem 
-25. VFS layer
+25. VFS layer - Completed: kernel/vfs.c, kernel/vfs.h, kernel/kernel.c, Makefile
 26. initrd / ramdisk with tar-based format
 27. FAT32 read support via ATA PIO
 28. Syscalls: open, close, read
