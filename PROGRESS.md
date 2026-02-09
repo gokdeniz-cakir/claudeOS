@@ -434,3 +434,40 @@
   - `tss.esp0` update is still not integrated with scheduler task-switch flow (critical before real multi-task ring3/syscall work).
   - Ring3 test mappings are global/static debug mappings and can conflict with future user program load addresses if left enabled.
   - PMM free-frame accounting remains vulnerable to overlap-induced drift on pathological/unsorted E820 maps.
+
+## 2026-02-09 12:42:58 +0300 - Phase 5, Task 22: INT 0x80 Syscall Interface
+- Completed: Added a user-callable `INT 0x80` syscall entry path with an initial kernel dispatcher skeleton.
+- IDT integration:
+  - `kernel/idt.h`: added `IDT_GATE_INT32_USER` (`0xEE`, DPL=3).
+  - `kernel/idt.c`: installed vector `0x80` gate to `syscall_int80` using DPL=3 interrupt gate so ring3 code can invoke it.
+- Syscall subsystem:
+  - New files:
+    - `kernel/syscall.h`
+    - `kernel/syscall.c`
+    - `kernel/syscall_stubs.asm`
+  - `syscall_stubs.asm` builds an `isr_regs`-compatible frame, switches to kernel data segments, calls `syscall_handler`, then `iret`s back.
+  - `syscall.c` provides:
+    - `syscall_init()` (startup marker)
+    - `syscall_handler()` with first-call trace marker
+    - `syscall_dispatch()` skeleton returning `0xFFFFFFFF` (`-ENOSYS`) for unknown syscall numbers.
+- Kernel integration:
+  - `kernel/kernel.c` now calls `syscall_init()` and logs syscall interface initialization during boot.
+- Ring3 probe update:
+  - `kernel/usermode.c` test payload now executes:
+    - `mov eax, 0x1234`
+    - `int 0x80`
+    - `mov ebx, eax`
+    - `cli` (expected `#GP` in ring3)
+  - This validates syscall entry/return path before triggering the deliberate privilege fault.
+- Build integration:
+  - `Makefile` updated to compile/link `syscall.c` and `syscall_stubs.asm`.
+- Reference docs consulted from `docs/core/`:
+  - `System_Calls.md`
+  - `Getting_to_Ring_3.md`
+  - `Task_State_Segment.md`
+- Verified:
+  - `make -j4` builds cleanly with `-Wall -Wextra -Werror`.
+  - QEMU serial smoke boot (`make run`) reaches stable scheduler + console path and logs:
+    - `[SYSCALL] INT 0x80 interface initialized`
+  - Full ring3 syscall-path confirmation still requires interactive `ring3test` in QEMU window.
+  - Image sizing remains within cap (`kernel.bin` = 17456 bytes, `os.bin` = 65536 bytes).

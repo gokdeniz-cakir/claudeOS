@@ -15,11 +15,17 @@
 
 /*
  * Ring-3 probe payload:
+ *   mov eax, 0x1234 ; test syscall number (currently unimplemented)
+ *   int 0x80        ; should enter kernel syscall handler and return
+ *   mov ebx, eax    ; copy return value for easier post-fault inspection
  *   cli        ; privileged in ring 3 => #GP
  *   jmp $      ; fallback if CPU behavior differs
  */
 static const uint8_t user_test_code[] = {
-    0xFA,       /* cli */
+    0xB8, 0x34, 0x12, 0x00, 0x00, /* mov eax, 0x1234 */
+    0xCD, 0x80,                   /* int 0x80 */
+    0x89, 0xC3,                   /* mov ebx, eax */
+    0xFA,                         /* cli */
     0xEB, 0xFE  /* jmp $ */
 };
 
@@ -118,8 +124,8 @@ void usermode_run_ring3_test(void)
 
     process_refresh_tss_stack();
 
-    vga_puts("[USER] entering ring3 test (expected #GP).\n");
-    serial_puts("[USER] entering ring3 test (expected #GP)\n");
+    vga_puts("[USER] entering ring3 test (INT 0x80 + expected #GP).\n");
+    serial_puts("[USER] entering ring3 test (INT 0x80 + expected #GP)\n");
 
     usermode_iret_enter(USER_TEST_CODE_VADDR, USER_TEST_STACK_TOP);
 }

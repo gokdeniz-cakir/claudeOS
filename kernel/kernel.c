@@ -13,6 +13,7 @@
 #include "console.h"
 #include "process.h"
 #include "tss.h"
+#include "syscall.h"
 
 static void demo_delay(void)
 {
@@ -97,6 +98,9 @@ void kernel_main(void)
     process_init();
     vga_puts("Process subsystem initialized.\n");
     serial_puts("Process subsystem initialized\n");
+
+    syscall_init();
+    vga_puts("INT 0x80 syscall interface initialized.\n");
 
     tss_init();
     vga_puts("TSS initialized.\n");

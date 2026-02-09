@@ -38,6 +38,8 @@ TSS_SRC        := $(KERNEL_DIR)/tss.c
 SPINLOCK_SRC   := $(KERNEL_DIR)/spinlock.c
 SYNC_SRC       := $(KERNEL_DIR)/sync.c
 USERMODE_SRC   := $(KERNEL_DIR)/usermode.c
+SYSCALL_SRC    := $(KERNEL_DIR)/syscall.c
+SYSCALL_STUBS_SRC := $(KERNEL_DIR)/syscall_stubs.asm
 LINKER_SCRIPT  := linker.ld
 
 # --- Build outputs -----------------------------------------------------------
@@ -65,6 +67,8 @@ TSS_OBJ        := $(BUILD_DIR)/tss.o
 SPINLOCK_OBJ   := $(BUILD_DIR)/spinlock.o
 SYNC_OBJ       := $(BUILD_DIR)/sync.o
 USERMODE_OBJ   := $(BUILD_DIR)/usermode.o
+SYSCALL_OBJ    := $(BUILD_DIR)/syscall.o
+SYSCALL_STUBS_OBJ := $(BUILD_DIR)/syscall_stubs.o
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
 
@@ -184,6 +188,14 @@ $(SYNC_OBJ): $(SYNC_SRC) | $(BUILD_DIR)
 $(USERMODE_OBJ): $(USERMODE_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- Syscall interface (ELF object) ------------------------------------------
+$(SYSCALL_OBJ): $(SYSCALL_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- Syscall stubs (ELF object from NASM) ------------------------------------
+$(SYSCALL_STUBS_OBJ): $(SYSCALL_STUBS_SRC) | $(BUILD_DIR)
+	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
+
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
 KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
@@ -191,7 +203,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
-               $(USERMODE_OBJ)
+               $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ)
 
 $(KERNEL_BIN): $(KERNEL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJS)

@@ -36,6 +36,7 @@ extern void isr28(void);
 extern void isr29(void);
 extern void isr30(void);
 extern void isr31(void);
+extern void syscall_int80(void);
 
 /* The IDT: 256 entries, initially zeroed (BSS) */
 static struct idt_entry idt[IDT_ENTRIES];
@@ -95,8 +96,11 @@ void idt_init(void)
     idt_set_gate(30, (uint32_t)isr30, KERNEL_CS, IDT_GATE_INT32);
     idt_set_gate(31, (uint32_t)isr31, KERNEL_CS, IDT_GATE_INT32);
 
+    /* User-callable syscall vector. */
+    idt_set_gate(0x80, (uint32_t)syscall_int80, KERNEL_CS, IDT_GATE_INT32_USER);
+
     /* Vectors 32-47 left empty for now (IRQs, added in Task 7) */
-    /* Vectors 48-255 left empty (available for software interrupts) */
+    /* Vectors 48-255 left mostly empty (available for software interrupts) */
 
     /* Load the IDT */
     __asm__ volatile ("lidt %0" : : "m"(idtr));
