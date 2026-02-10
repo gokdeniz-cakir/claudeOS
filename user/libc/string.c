@@ -87,6 +87,112 @@ char *strcpy(char *dst, const char *src)
     return dst;
 }
 
+char *strncpy(char *dst, const char *src, size_t n)
+{
+    size_t i = 0U;
+
+    if (dst == 0 || src == 0 || n == 0U) {
+        return dst;
+    }
+
+    while (i < n && src[i] != '\0') {
+        dst[i] = src[i];
+        i++;
+    }
+
+    while (i < n) {
+        dst[i] = '\0';
+        i++;
+    }
+
+    return dst;
+}
+
+char *strcat(char *dst, const char *src)
+{
+    size_t dst_len;
+    size_t i = 0U;
+
+    if (dst == 0 || src == 0) {
+        return dst;
+    }
+
+    dst_len = strlen(dst);
+    while (src[i] != '\0') {
+        dst[dst_len + i] = src[i];
+        i++;
+    }
+    dst[dst_len + i] = '\0';
+    return dst;
+}
+
+char *strncat(char *dst, const char *src, size_t n)
+{
+    size_t dst_len;
+    size_t i = 0U;
+
+    if (dst == 0 || src == 0) {
+        return dst;
+    }
+
+    dst_len = strlen(dst);
+    while (i < n && src[i] != '\0') {
+        dst[dst_len + i] = src[i];
+        i++;
+    }
+    dst[dst_len + i] = '\0';
+    return dst;
+}
+
+char *strchr(const char *s, int c)
+{
+    size_t i = 0U;
+    char ch;
+
+    if (s == 0) {
+        return 0;
+    }
+
+    ch = (char)c;
+    while (s[i] != '\0') {
+        if (s[i] == ch) {
+            return (char *)&s[i];
+        }
+        i++;
+    }
+
+    if (ch == '\0') {
+        return (char *)&s[i];
+    }
+
+    return 0;
+}
+
+char *strrchr(const char *s, int c)
+{
+    size_t i = 0U;
+    char ch;
+    char *last = 0;
+
+    if (s == 0) {
+        return 0;
+    }
+
+    ch = (char)c;
+    while (s[i] != '\0') {
+        if (s[i] == ch) {
+            last = (char *)&s[i];
+        }
+        i++;
+    }
+
+    if (ch == '\0') {
+        return (char *)&s[i];
+    }
+
+    return last;
+}
+
 void *memcpy(void *dst, const void *src, size_t n)
 {
     size_t i;
@@ -141,4 +247,31 @@ void *memset(void *dst, int value, size_t n)
     }
 
     return dst;
+}
+
+int memcmp(const void *a, const void *b, size_t n)
+{
+    const uint8_t *lhs = (const uint8_t *)a;
+    const uint8_t *rhs = (const uint8_t *)b;
+    size_t i;
+
+    if (lhs == rhs || n == 0U) {
+        return 0;
+    }
+
+    if (lhs == 0) {
+        return -1;
+    }
+
+    if (rhs == 0) {
+        return 1;
+    }
+
+    for (i = 0U; i < n; i++) {
+        if (lhs[i] != rhs[i]) {
+            return ((int)lhs[i]) - ((int)rhs[i]);
+        }
+    }
+
+    return 0;
 }

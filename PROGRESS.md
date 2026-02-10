@@ -1287,3 +1287,40 @@
     - `[WM] started (drag title bars with mouse, press q to exit)`
     - `[WM] stopped`
   - `make demo` regression script still passes end-to-end.
+
+## 2026-02-10 21:01:43 +0300 - Phase 9, Task 39: libc Expansion for DOOM Bring-up
+- Completed: Expanded userspace libc with formatter APIs, stdio file APIs, stronger heap APIs, and additional string/memory routines needed for upcoming DOOM porting.
+- `stdio` expansion (`user/libc/include/stdio.h`, `user/libc/stdio.c`):
+  - added printf-family support:
+    - `vprintf`, `fprintf`, `vfprintf`
+    - `sprintf`, `snprintf`, `vsprintf`, `vsnprintf`
+  - implemented lightweight `FILE` abstraction with stream table and std streams (`stdin/stdout/stderr`).
+  - added file APIs:
+    - `fopen`, `fread`, `fwrite`, `fclose`, `fflush`
+    - `fseek`, `ftell`, `rewind`, `feof`, `ferror`
+  - mode parsing supports `r`, `w`, `a`, `+`, `b` combinations.
+  - seek implementation includes reopen+skip fallback (works with current syscall surface that has no dedicated `lseek` syscall yet).
+- `malloc` expansion (`user/libc/include/stdlib.h`, `user/libc/malloc.c`):
+  - allocator metadata upgraded to doubly-linked free list.
+  - added:
+    - `calloc`
+    - `realloc`
+  - improved block split/coalesce logic and top-of-heap release behavior.
+- `string` expansion (`user/libc/include/string.h`, `user/libc/string.c`):
+  - added:
+    - `strncpy`, `strcat`, `strncat`, `strchr`, `strrchr`
+    - `memcmp`
+- Validation app update (`user/libctest.c`):
+  - now exercises `realloc`, `sprintf`, `fopen`/`fread`/`fclose`, and `fseek`/`ftell`/`rewind`.
+  - preserves existing Task 34 markers and output expectations.
+- Stability fixes found during bring-up:
+  - fixed allocator tail-release bug (accessing freed header memory after `sbrk` shrink) in `user/libc/malloc.c`.
+  - fixed first-call `puts` initialization bug (stdout pointer evaluated before stream init) in `user/libc/stdio.c`.
+  - serialized syscall write path with IRQ-safe spinlock in `kernel/syscall.c` to prevent marker/interleaving regressions in concurrent userspace output.
+- Reference docs consulted:
+  - `docs/core/C_Library.md`
+  - `docs/core/Creating_a_C_Library.md`
+  - `docs/core/Cross-Porting_Software.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - `make demo` passes end-to-end after libc changes.

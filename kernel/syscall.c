@@ -8,6 +8,7 @@
 #include "pmm.h"
 #include "process.h"
 #include "serial.h"
+#include "spinlock.h"
 #include "usermode.h"
 #include "vfs.h"
 #include "vga.h"
@@ -20,6 +21,7 @@
 #define USER_KERNEL_SPLIT    0xC0000000U
 
 static uint8_t syscall_trace_once = 0U;
+static struct spinlock syscall_write_lock = SPINLOCK_INITIALIZER;
 
 struct fork_child_exec_context {
     char path[PROCESS_IMAGE_PATH_MAX];
@@ -169,6 +171,7 @@ static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
 {
     const char *buf = (const char *)(uintptr_t)user_buf;
     uint32_t i;
+    uint32_t flags;
 
     if (fd != 1U && fd != 2U) {
         return -1;
@@ -186,10 +189,12 @@ static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
         return -1;
     }
 
+    flags = spinlock_lock_irqsave(&syscall_write_lock);
     for (i = 0U; i < len; i++) {
         vga_putchar(buf[i]);
         serial_putchar(buf[i]);
     }
+    spinlock_unlock_irqrestore(&syscall_write_lock, flags);
 
     return (int32_t)len;
 }
@@ -441,6 +446,7 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
 void syscall_init(void)
 {
     syscall_trace_once = 0U;
+    spinlock_init(&syscall_write_lock);
     serial_puts("[SYSCALL] INT 0x80 interface initialized\n");
 }
 

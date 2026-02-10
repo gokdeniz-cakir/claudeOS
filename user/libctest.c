@@ -8,8 +8,9 @@
 int main(void)
 {
     char *buf;
-    int fd;
+    FILE *fp;
     ssize_t nread;
+    char status[64];
 
     printf("[LIBC] user C program started\n");
 
@@ -19,26 +20,43 @@ int main(void)
         goto done;
     }
 
+    buf = (char *)realloc(buf, LIBCTEST_BUF_LEN + 32U);
+    if (buf == 0) {
+        printf("[LIBC] realloc failed\n");
+        goto done;
+    }
+
     strcpy(buf, "[LIBC] malloc+string ready");
     printf("%s (len=%u)\n", buf, (unsigned)strlen(buf));
 
-    fd = open("/fat/HELLO.TXT", O_READ);
-    if (fd < 0) {
-        printf("[LIBC] open failed\n");
+    (void)sprintf(status, "[LIBC] pid=%d", getpid());
+    printf("%s\n", status);
+
+    fp = fopen("/fat/HELLO.TXT", "rb");
+    if (fp == 0) {
+        printf("[LIBC] fopen failed\n");
         free(buf);
         goto done;
     }
 
-    nread = read(fd, buf, LIBCTEST_BUF_LEN - 1U);
+    if (fseek(fp, 0L, SEEK_END) == 0) {
+        long size = ftell(fp);
+        if (size >= 0) {
+            printf("[LIBC] file size=%u\n", (unsigned)size);
+        }
+        rewind(fp);
+    }
+
+    nread = (ssize_t)fread(buf, 1U, LIBCTEST_BUF_LEN - 1U, fp);
     if (nread > 0) {
         buf[(uint32_t)nread] = '\0';
         printf("[LIBC] read bytes=%u\n", (unsigned)nread);
         printf("%s", buf);
     } else {
-        printf("[LIBC] read failed\n");
+        printf("[LIBC] fread failed\n");
     }
 
-    (void)close(fd);
+    (void)fclose(fp);
     free(buf);
 
 done:
