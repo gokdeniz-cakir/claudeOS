@@ -1478,3 +1478,29 @@
   - `make -j4` passes.
   - `make doom -j4` and `make build/fat32.img` pass.
   - headless QEMU reproduction now advances past `adding /fat/doom1.wad` immediately and reaches WAD header validation (no stall).
+
+## 2026-02-10 23:11:09 +0300 - Post-Task 42 Runtime Fix: Doom Framebuffer Presentation
+- Issue observed:
+  - Doom executed normally (IWAD load, game loop, input, FPS) but no pixels were rendered on the QEMU window.
+- Root cause:
+  - `user/doomgeneric/doomgeneric_claudeos.c` kept `DG_DrawFrame()` as a no-op presenter.
+  - no syscall existed to copy userspace frame data into the kernel framebuffer.
+- Fix:
+  - Added framebuffer present syscall:
+    - `kernel/syscall.h`, `kernel/syscall.c`: `SYSCALL_FB_PRESENT`.
+    - validates userspace frame buffer range and maps to framebuffer presenter.
+  - Added kernel framebuffer presenter:
+    - `kernel/fb.h`, `kernel/fb.c`: `fb_present_rgbx8888(...)`.
+    - accepts userspace RGBX8888 frame data, centers it, converts to active VBE backend pixel format (16/24/32 bpp), and swaps dirty region.
+  - Added userspace libc wrapper:
+    - `user/libc/include/unistd.h`, `user/libc/syscall.c`: `fb_present(...)`.
+  - Wired Doom backend rendering:
+    - `user/doomgeneric/doomgeneric_claudeos.c`: `DG_DrawFrame()` now calls `fb_present(DG_ScreenBuffer, DOOMGENERIC_RESX, DOOMGENERIC_RESY)`.
+    - removed periodic FPS text spam from `DG_DrawFrame()` to avoid console text overwriting the rendered frame.
+- Reference docs consulted:
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+- Verified:
+  - `make -j4` passes.
+  - `make doom -j4` passes.
+  - `make build/fat32.img` passes.
+  - headless QEMU run confirms Doom enters graphics init and runs without framebuffer-present errors.

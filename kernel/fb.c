@@ -31,6 +31,11 @@ struct fb_state {
 };
 
 static struct fb_state g_fb;
+static uint8_t g_present_layout_ready = 0U;
+static uint32_t g_present_x = 0U;
+static uint32_t g_present_y = 0U;
+static uint32_t g_present_w = 0U;
+static uint32_t g_present_h = 0U;
 
 /* ASCII 0x20..0x5F (space..underscore), adapted from font8x8_basic. */
 static const uint8_t font8x8_upper_basic[64][8] = {
@@ -339,6 +344,7 @@ int fb_init(void)
     g_fb.cursor_row = 0U;
     g_fb.cursor_col = 0U;
     g_fb.dirty = 0U;
+    g_present_layout_ready = 0U;
 
     if (g_fb.text_cols == 0U || g_fb.text_rows == 0U) {
         g_fb.ready = 0U;
@@ -456,6 +462,99 @@ void fb_swap_buffers(void)
     }
 
     g_fb.dirty = 0U;
+}
+
+int fb_present_rgbx8888(const uint32_t *pixels, uint32_t width, uint32_t height)
+{
+    uint32_t copy_w;
+    uint32_t copy_h;
+    uint32_t dst_x;
+    uint32_t dst_y;
+    uint8_t clear_background = 0U;
+
+    if (g_fb.ready == 0U || pixels == 0 || width == 0U || height == 0U) {
+        return -1;
+    }
+
+    copy_w = width;
+    copy_h = height;
+    if (copy_w > g_fb.width) {
+        copy_w = g_fb.width;
+    }
+    if (copy_h > g_fb.height) {
+        copy_h = g_fb.height;
+    }
+
+    dst_x = (g_fb.width > copy_w) ? (g_fb.width - copy_w) / 2U : 0U;
+    dst_y = (g_fb.height > copy_h) ? (g_fb.height - copy_h) / 2U : 0U;
+
+    if (g_present_layout_ready == 0U ||
+        g_present_x != dst_x || g_present_y != dst_y ||
+        g_present_w != copy_w || g_present_h != copy_h) {
+        g_present_layout_ready = 1U;
+        g_present_x = dst_x;
+        g_present_y = dst_y;
+        g_present_w = copy_w;
+        g_present_h = copy_h;
+        clear_background = 1U;
+    }
+
+    if (clear_background != 0U) {
+        fb_clear(0x000000U);
+    }
+
+    if (g_fb.bytes_per_pixel == 4U) {
+        for (uint32_t y = 0U; y < copy_h; y++) {
+            const uint32_t *src_row = pixels + (y * width);
+            uint8_t *dst_row = g_fb.back + ((dst_y + y) * g_fb.pitch) + (dst_x * 4U);
+
+            for (uint32_t x = 0U; x < copy_w; x++) {
+                uint32_t rgb = src_row[x] & 0x00FFFFFFU;
+                uint32_t offset = x * 4U;
+
+                dst_row[offset + 0U] = (uint8_t)(rgb & 0xFFU);
+                dst_row[offset + 1U] = (uint8_t)((rgb >> 8) & 0xFFU);
+                dst_row[offset + 2U] = (uint8_t)((rgb >> 16) & 0xFFU);
+                dst_row[offset + 3U] = 0U;
+            }
+        }
+    } else if (g_fb.bytes_per_pixel == 3U) {
+        for (uint32_t y = 0U; y < copy_h; y++) {
+            const uint32_t *src_row = pixels + (y * width);
+            uint8_t *dst_row = g_fb.back + ((dst_y + y) * g_fb.pitch) + (dst_x * 3U);
+
+            for (uint32_t x = 0U; x < copy_w; x++) {
+                uint32_t rgb = src_row[x] & 0x00FFFFFFU;
+                uint32_t offset = x * 3U;
+
+                dst_row[offset + 0U] = (uint8_t)(rgb & 0xFFU);
+                dst_row[offset + 1U] = (uint8_t)((rgb >> 8) & 0xFFU);
+                dst_row[offset + 2U] = (uint8_t)((rgb >> 16) & 0xFFU);
+            }
+        }
+    } else if (g_fb.bytes_per_pixel == 2U) {
+        for (uint32_t y = 0U; y < copy_h; y++) {
+            const uint32_t *src_row = pixels + (y * width);
+            uint8_t *dst_row = g_fb.back + ((dst_y + y) * g_fb.pitch) + (dst_x * 2U);
+
+            for (uint32_t x = 0U; x < copy_w; x++) {
+                uint32_t rgb = src_row[x] & 0x00FFFFFFU;
+                uint16_t packed = (uint16_t)((((rgb >> 19) & 0x1FU) << 11) |
+                                             (((rgb >> 10) & 0x3FU) << 5) |
+                                             ((rgb >> 3) & 0x1FU));
+                uint32_t offset = x * 2U;
+
+                dst_row[offset + 0U] = (uint8_t)(packed & 0xFFU);
+                dst_row[offset + 1U] = (uint8_t)((packed >> 8) & 0xFFU);
+            }
+        }
+    } else {
+        return -1;
+    }
+
+    fb_mark_dirty(dst_x, dst_y, copy_w, copy_h);
+    fb_swap_buffers();
+    return 0;
 }
 
 void fb_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg_rgb, uint32_t bg_rgb)

@@ -15,6 +15,7 @@
 #define SYSCALL_KBD_READ 11U
 #define SYSCALL_TICKS_MS 12U
 #define SYSCALL_LSEEK 13U
+#define SYSCALL_FB_PRESENT 14U
 
 static inline uint32_t syscall3(uint32_t number, uint32_t arg0, uint32_t arg1,
                                 uint32_t arg2)
@@ -83,6 +84,14 @@ int kbd_read_event(struct kbd_event *event)
 {
     return (int)(int32_t)syscall3(SYSCALL_KBD_READ,
                                   (uint32_t)(uintptr_t)event, 0U, 0U);
+}
+
+int fb_present(const void *pixels, uint32_t width, uint32_t height)
+{
+    return (int)(int32_t)syscall3(SYSCALL_FB_PRESENT,
+                                  (uint32_t)(uintptr_t)pixels,
+                                  width,
+                                  height);
 }
 
 uint32_t ticks_ms(void)

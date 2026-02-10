@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "elf.h"
+#include "fb.h"
 #include "heap.h"
 #include "keyboard.h"
 #include "paging.h"
@@ -427,6 +428,30 @@ static int32_t syscall_lseek(uint32_t fd, int32_t offset, uint32_t whence)
     return rc;
 }
 
+static int32_t syscall_fb_present(uint32_t user_pixels, uint32_t width, uint32_t height)
+{
+    uint32_t len;
+
+    if (user_pixels == 0U || width == 0U || height == 0U) {
+        return -1;
+    }
+
+    if (width > (0xFFFFFFFFU / 4U)) {
+        return -1;
+    }
+    len = width * 4U;
+    if (height > (0xFFFFFFFFU / len)) {
+        return -1;
+    }
+    len *= height;
+
+    if (syscall_validate_user_mapping(user_pixels, len) == 0U) {
+        return -1;
+    }
+
+    return fb_present_rgbx8888((const uint32_t *)(uintptr_t)user_pixels, width, height);
+}
+
 static int32_t syscall_kbd_read(uint32_t user_event_ptr)
 {
     struct keyboard_event event;
@@ -493,6 +518,8 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return syscall_ticks_ms();
         case SYSCALL_LSEEK:
             return (uint32_t)(int32_t)syscall_lseek(arg0, (int32_t)arg1, arg2);
+        case SYSCALL_FB_PRESENT:
+            return (uint32_t)(int32_t)syscall_fb_present(arg0, arg1, arg2);
         default:
             return SYSCALL_RET_ENOSYS;
     }

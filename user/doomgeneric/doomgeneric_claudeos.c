@@ -10,13 +10,11 @@
  * ClaudeOS Task 42 backend polish:
  * - Uses kernel PIT-backed userspace tick syscall for stable timing.
  * - Uses kernel keyboard event queue syscall for press/release mapping.
- * - Keeps rendering as a no-op until a userspace framebuffer syscall exists.
+ * - Presents each frame through a userspace framebuffer syscall.
  */
 
-static uint32_t dg_frame_counter = 0U;
-static uint32_t dg_fps_counter = 0U;
-static uint32_t dg_fps_window_start_ms = 0U;
 static char dg_last_title[64];
+static uint8_t dg_present_warned = 0U;
 
 static uint8_t dg_has_iwad_arg(int argc, char **argv)
 {
@@ -164,27 +162,20 @@ static int dg_map_key(uint8_t scancode, uint8_t extended)
 
 void DG_Init(void)
 {
-    dg_frame_counter = 0U;
-    dg_fps_counter = 0U;
-    dg_fps_window_start_ms = ticks_ms();
     dg_last_title[0] = '\0';
+    dg_present_warned = 0U;
     puts("[DOOM] ClaudeOS backend initialized");
 }
 
 void DG_DrawFrame(void)
 {
-    uint32_t now;
-
-    dg_frame_counter++;
-    dg_fps_counter++;
-    now = ticks_ms();
-
-    if ((now - dg_fps_window_start_ms) >= 1000U) {
-        printf("[DOOM] fps=%u total_frames=%u\n",
-               (unsigned)dg_fps_counter,
-               (unsigned)dg_frame_counter);
-        dg_fps_counter = 0U;
-        dg_fps_window_start_ms = now;
+    if (fb_present((const void *)DG_ScreenBuffer,
+                   DOOMGENERIC_RESX,
+                   DOOMGENERIC_RESY) != 0) {
+        if (dg_present_warned == 0U) {
+            puts("[DOOM] framebuffer present unavailable");
+            dg_present_warned = 1U;
+        }
     }
 }
 

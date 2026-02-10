@@ -26,6 +26,7 @@ int getpid(void);
 int proc_count(void);
 int lseek(int fd, int32_t offset, int whence);
 int kbd_read_event(struct kbd_event *event);
+int fb_present(const void *pixels, uint32_t width, uint32_t height);
 uint32_t ticks_ms(void);
 void *sbrk(int32_t increment);
 void exit(int status) __attribute__((noreturn));
