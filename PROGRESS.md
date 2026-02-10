@@ -832,6 +832,29 @@
   - Global VFS FD table has no per-process ownership and no close-on-exit cleanup path.
   - Long VFS/FAT32/ATA read paths execute with IRQs disabled due nested `spinlock_lock_irqsave` usage, risking interrupt latency spikes.
 
+## 2026-02-10 21:20:00 +0300 - Audit pass for newly completed Tasks 35-39
+- Completed:
+  - Reviewed the new graphics/input/libc milestones landed after `fa68410`:
+    - Task 35 (VBE bootstrap + LFB mapping)
+    - Task 36 (framebuffer primitives + console backend)
+    - Task 37 (PS/2 mouse IRQ12 driver)
+    - Task 38 (basic stacking window manager)
+    - Task 39 (libc expansion for DOOM prerequisites)
+  - Rebuilt from clean (`make clean && make -j4`) and ran runtime checks:
+    - `bash tools/run_task34_demo.sh` (PASS)
+    - headless `wmstart`/`q` QEMU monitor scenario (WM start/stop markers observed in serial log).
+- Reference docs consulted:
+  - `docs/core/VESA_Video_Modes.md`
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+  - `docs/core/PS_2_Mouse.md`
+  - `docs/core/C_Library.md`
+- Main findings captured for user report:
+  - `stdio` path persistence is shorter than kernel VFS path limit; `fseek`/`rewind` reopen logic can fail or reopen wrong files for long paths.
+  - `fopen` mode parsing currently does not implement `w` truncate or `a` append semantics; this is a compatibility trap when write-capable filesystems arrive.
+  - Framebuffer pixel packing assumes fixed BGR/RGB565 layouts and ignores VBE mask/position metadata.
+  - Mouse command-ACK reads are not filtered to AUX-origin bytes.
+  - `syscall_write` now holds IRQ-off lock across full buffer writes, creating interrupt-latency risk for large writes.
+
 ## 2026-02-09 14:58:00 +0300 - Task 29 Isolation Hardening (Post-Audit Fix)
 - Completed: Fixed the shared-address-space isolation gap reported for Task 29.
 - Process/address-space updates (`kernel/process.c`, `kernel/process.h`):
