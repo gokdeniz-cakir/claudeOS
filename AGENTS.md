@@ -104,3 +104,17 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 32. Builtins: ls, cat, echo, clear, help, ps - Completed: user/shell.c, user/libc/syscall.c, user/libc/include/unistd.h, kernel/syscall.c, kernel/syscall.h
 33. At least 2-3 standalone userspace programs - Completed: user/uhello.asm, user/ucat.asm, user/uexec.asm, kernel/console.c, kernel/elf.c, kernel/elf.h, user/shell.c, Makefile
 34. Polish, test, create demo script - Completed: tools/run_task34_demo.sh, Makefile, PROGRESS.md, AGENTS.md
+
+### Phase 8: GUI
+
+35. VBE framebuffer setup (real-mode VBE call in stage2, linear framebuffer mapped into kernel space) - Completed: boot/stage2.asm, boot/mbr.asm, kernel/vbe.c, kernel/vbe.h, kernel/kernel.c, Makefile
+36. Graphics primitives + framebuffer console (pixel ops, bitmap font, double buffering) - Completed: kernel/fb.c, kernel/fb.h, kernel/vga.c, kernel/kernel.c, Makefile
+37. PS/2 mouse driver (IRQ12) - Completed: kernel/mouse.c, kernel/mouse.h, kernel/kernel.c, Makefile
+38. Basic window manager (stacking windows, event dispatch, title bars, dragging)
+
+### Phase 9: DOOM
+
+39. Expand libc (sprintf, fopen/fread/fclose, full malloc, and whatever else DOOM needs)
+40. Large userspace memory support (ensure VMM can give a process 16MB+ heap)
+41. Port doomgeneric (implement the ~5 platform functions, patch DOOM source, compile as ELF)
+42. Polish (sound stub, FPS timing, input mapping, demo)
