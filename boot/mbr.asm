@@ -13,6 +13,10 @@
 %define KERNEL_MAX_SECTORS 124
 %endif
 
+%ifndef STAGE2_SECTORS
+%define STAGE2_SECTORS 4
+%endif
+
 ; ---------------------------------------------------------------------------
 ; Constants
 ; ---------------------------------------------------------------------------
@@ -20,11 +24,20 @@ VIDEO_TELETYPE      equ 0x0E        ; INT 0x10 AH: teletype output
 VIDEO_PAGE          equ 0x00        ; Display page number
 
 STAGE2_ADDR         equ 0x7E00      ; Load address for stage 2 + kernel
-STAGE2_SECTORS      equ 2           ; Stage 2 is padded to 2 sectors (1024 bytes)
 DISK_READ_SECTORS   equ (STAGE2_SECTORS + KERNEL_MAX_SECTORS)
 FIRST_READ_SECTORS  equ 65          ; Max sectors from 0x7E00 without 64KB wrap
-SECOND_READ_SECTORS equ (DISK_READ_SECTORS - FIRST_READ_SECTORS)
 SECOND_READ_SEG     equ 0x1000      ; Physical 0x10000, contiguous after first chunk
+SECOND_READ_MAX     equ 127         ; INT 13h extensions packet read limit
+
+%if ((DISK_READ_SECTORS - FIRST_READ_SECTORS) > SECOND_READ_MAX)
+%define SECOND_READ_SECTORS SECOND_READ_MAX
+%define THIRD_READ_SECTORS ((DISK_READ_SECTORS - FIRST_READ_SECTORS) - SECOND_READ_MAX)
+%else
+%define SECOND_READ_SECTORS (DISK_READ_SECTORS - FIRST_READ_SECTORS)
+%define THIRD_READ_SECTORS 0
+%endif
+
+THIRD_READ_SEG      equ (SECOND_READ_SEG + ((SECOND_READ_SECTORS * 512) / 16))
 DISK_READ_RETRIES   equ 3           ; Retry count for disk reads
 
 ; ---------------------------------------------------------------------------
@@ -93,7 +106,7 @@ start:
     int 0x13
     jc .read_fail
 
-    ; Second chunk: remaining sectors into 0x1000:0x0000 (phys 0x10000)
+    ; Second chunk: up to 127 sectors into 0x1000:0x0000 (phys 0x10000)
     mov word [dap_sector_count], SECOND_READ_SECTORS
     mov word [dap_buffer_offset], 0x0000
     mov word [dap_buffer_segment], SECOND_READ_SEG
@@ -105,6 +118,21 @@ start:
     mov si, dap_packet
     int 0x13
     jc .read_fail
+
+%if THIRD_READ_SECTORS > 0
+    ; Third chunk: any remaining sectors, contiguous after second chunk.
+    mov word [dap_sector_count], THIRD_READ_SECTORS
+    mov word [dap_buffer_offset], 0x0000
+    mov word [dap_buffer_segment], THIRD_READ_SEG
+    mov dword [dap_lba_low], (1 + FIRST_READ_SECTORS + SECOND_READ_SECTORS)
+    mov dword [dap_lba_high], 0
+
+    mov ah, 0x42
+    mov dl, [boot_drive]
+    mov si, dap_packet
+    int 0x13
+    jc .read_fail
+%endif
 
     jmp .read_ok
 

@@ -1092,3 +1092,88 @@
   - Stage2 E820 first-call handling is still strict on `EBX==0` edge case.
   - Kernel entry BSS zeroing still ignores non-dword tail bytes.
   - Keyboard init ACK warning path still misses read-timeout/read-failure diagnostics.
+
+## 2026-02-09 17:02:02 +0300 - Docs Core Sync for New Phases (GUI + DOOM)
+- Completed: Checked `AGENTS.md` new Phase 8/9 tasks against `docs/core` coverage and copied missing relevant OSDev articles from `docs/library` into `docs/core`.
+- Added to `docs/core`:
+  - `GUI.md`
+  - `Compositing.md`
+  - `Double_Buffering.md`
+  - `Graphics_stack.md`
+  - `How_do_I_set_a_graphics_mode.md`
+  - `PC_Screen_Font.md`
+  - `Mouse.md`
+  - `Mouse_Input.md`
+  - `PS_2_Mouse.md`
+  - `PS2_Mouse.md`
+  - `Cross-Porting_Software.md`
+  - `Portability.md`
+  - `Sound.md`
+  - `Sound_Blaster_16.md`
+- Note:
+  - Core already had major prerequisites for these phases (`VBE`, framebuffer, paging, PIT/timers, libc/memory docs).
+  - Repository currently has `/docs` in `.gitignore`; these files are present locally but ignored by git until that rule is removed.
+
+## 2026-02-10 19:09:38 +0300 - Phase 8/9 Doc Readiness Pass (Focused Read)
+- Completed: Read and distilled the highest-impact docs for upcoming implementation work.
+- Key references read:
+  - `docs/core/VESA_Video_Modes.md`
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+  - `docs/core/Double_Buffering.md`
+  - `docs/core/GUI.md`
+  - `docs/core/PC_Screen_Font.md`
+  - `docs/core/I8042_PS_2_Controller.md`
+  - `docs/core/PS_2_Mouse.md`
+  - `docs/core/Mouse_Input.md`
+  - `docs/core/C_Library.md`
+  - `docs/core/Creating_a_C_Library.md`
+  - `docs/core/Cross-Porting_Software.md`
+  - `docs/core/Portability.md`
+  - `docs/core/Sound.md`
+- Important implementation constraints captured:
+  - VBE setup must happen pre-protected mode (stage2 real mode), with AX checks expecting `0x004F` for each `INT 0x10` VBE call.
+  - Mode selection should query mode list (`0x4F00` + `0x4F01`) and set graphics mode with LFB bit (`mode | 0x4000`) via `0x4F02`.
+  - Framebuffer address from VBE mode info is physical and must be explicitly mapped in paging; rendering must use `pitch`/`bytes_per_scanline`, not `width * bytes_per_pixel` assumptions.
+  - Phase 8 rendering path should default to back-buffer composition and front-buffer blit to avoid visible tearing/flicker and reduce VRAM write churn.
+  - PS/2 mouse bring-up should follow controller-safe sequence (`0xA8`, config byte IRQ12 enable, `0xD4`-prefixed device commands, ACK handling) and decode signed 9-bit X/Y deltas from packet byte 1 sign bits.
+  - For Phase 9 growth, keep libc separation clear (kernel freestanding vs userspace hosted assumptions), preserve clean syscall ABI, and keep cross-porting workflow sysroot/pkg-config/DESTDIR-driven.
+- Issue encountered:
+  - `docs/core/VBE.md` and `docs/core/Getting_VBE_Mode_Info.md` are redirect stubs; detailed guidance is in `docs/core/VESA_Video_Modes.md`.
+
+## 2026-02-10 19:25:12 +0300 - Phase 8, Task 35: VBE Framebuffer Setup + Kernel LFB Mapping
+- Completed: Implemented VBE graphics-mode bootstrap in stage2 (real mode) and mapped the linear framebuffer into kernel virtual space.
+- Bootloader updates:
+  - `boot/stage2.asm`:
+    - added `setup_vbe` flow using BIOS VBE calls:
+      - `INT 0x10, AX=0x4F00` (controller presence check)
+      - `INT 0x10, AX=0x4F01` (mode info for target mode `0x118`)
+      - `INT 0x10, AX=0x4F02` (set mode with LFB bit, `mode | 0x4000`)
+    - exports compact VBE boot info at physical `0x1000` (later visible at `0xC0001000`).
+    - stage2 size expanded from 2 sectors to 4 sectors (`STAGE2_SECTORS`) to fit VBE logic.
+    - added runtime GDT rebuild (`setup_runtime_gdt`) and removed BIOS teletype calls after `lgdt` to avoid GDTR clobber during graphics BIOS paths.
+  - `boot/mbr.asm`:
+    - now receives `STAGE2_SECTORS` from build.
+    - strengthened disk-read path to split into up to 3 INT13-extensions packet reads so no packet exceeds 127 sectors.
+- Kernel updates:
+  - new module: `kernel/vbe.c`, `kernel/vbe.h`
+    - reads stage2 handoff (`0xC0001000`), validates magic/status, computes framebuffer size.
+    - maps framebuffer physical range into kernel MMIO window at `0xD0000000` via `paging_map_page`.
+    - exposes runtime getters for upcoming framebuffer console/window manager tasks.
+    - logs active VBE mode metadata to serial.
+  - `kernel/kernel.c`: invokes `vbe_init()` after `pmm_init()`.
+  - `Makefile`:
+    - added build wiring for `kernel/vbe.c`.
+    - added shared `STAGE2_SECTORS := 4` and passes it to NASM for both MBR and stage2.
+- Issues encountered and resolved:
+  - Stage2 expansion initially caused bootloader disk-read failure (`Disk err`) because second packet became 129 sectors (>127). Fixed by splitting read into a third chunk.
+  - Initial VBE bring-up caused GP fault on real→protected jump due BIOS calls clobbering GDTR state after `lgdt`. Fixed by rebuilding runtime GDT post-VBE and avoiding BIOS calls after `lgdt`.
+- Reference docs consulted:
+  - `docs/core/VESA_Video_Modes.md`
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+  - `docs/core/How_do_I_set_a_graphics_mode.md`
+  - `docs/core/Double_Buffering.md`
+- Verified:
+  - `make -j4` succeeds.
+  - Headless QEMU boot (`-display none`, serial-to-file) reaches full kernel init with VBE log:
+    - `[VBE] mode=0x00000118 1024x768x24 pitch=3072 fb_phys=0xFD000000 fb_virt=0xD0000000`
+  - `make demo` passes regression checks.

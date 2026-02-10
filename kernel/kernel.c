@@ -17,6 +17,7 @@
 #include "vfs.h"
 #include "initrd.h"
 #include "fat32.h"
+#include "vbe.h"
 
 static void demo_delay(void)
 {
@@ -53,6 +54,7 @@ void kernel_main(void)
     serial_puts("Paging enabled\n");
 
     pmm_init();
+    (void)vbe_init();
 
     vga_init();
     vga_set_color(VGA_COLOR_WHITE, VGA_COLOR_BLACK);

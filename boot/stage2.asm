@@ -16,6 +16,10 @@
 %define KERNEL_MAX_SECTORS 124
 %endif
 
+%ifndef STAGE2_SECTORS
+%define STAGE2_SECTORS 4
+%endif
+
 ; ---------------------------------------------------------------------------
 ; Constants
 ; ---------------------------------------------------------------------------
@@ -31,7 +35,7 @@ KBC_CMD_PORT        equ 0x64
 VGA_TEXT_BASE       equ 0xB8000
 VGA_WHITE_ON_BLACK  equ 0x0F
 
-STAGE2_PADDED_SIZE  equ 0x400       ; Stage 2 padded to 1024 bytes (2 sectors)
+STAGE2_PADDED_SIZE  equ (STAGE2_SECTORS * 512)
 KERNEL_LOAD_ADDR    equ 0x7E00 + STAGE2_PADDED_SIZE  ; = 0x8200 (initial load)
 KERNEL_PHYS_ADDR    equ 0x100000    ; Final kernel location (1MB)
 KERNEL_MAX_BYTES    equ (KERNEL_MAX_SECTORS * 512)
@@ -42,6 +46,39 @@ E820_MAP_ADDR       equ 0x0500      ; Physical address for E820 map
 E820_MAX_ENTRIES    equ 32          ; Maximum number of E820 entries
 E820_ENTRY_SIZE     equ 24          ; Size of each E820 entry in bytes
 E820_SMAP           equ 0x534D4150  ; 'SMAP' signature
+
+; VBE boot info handoff (physical memory, later visible at 0xC0001000)
+VBE_BOOT_INFO_ADDR          equ 0x1000
+VBE_MODE_INFO_ADDR          equ 0x1100
+VBE_CTRL_INFO_ADDR          equ 0x1200
+GDT_RUNTIME_ADDR            equ 0x1400
+GDT_RUNTIME_DESC_ADDR       equ 0x1418
+VBE_BOOT_INFO_WORDS         equ 24
+VBE_CTRL_INFO_WORDS         equ 256
+VBE_TARGET_MODE             equ 0x0118      ; Prefer 1024x768x32
+VBE_BOOT_MAGIC              equ 0x30454256  ; 'VBE0'
+VBE_CTRL_MAGIC_REQ          equ 0x32454256  ; 'VBE2'
+VBE_CTRL_MAGIC_OK           equ 0x41534556  ; 'VESA'
+VBE_STATUS_ACTIVE           equ 1
+
+; VBE boot info offsets
+VBE_BOOT_MAGIC_OFF          equ 0
+VBE_BOOT_STATUS_OFF         equ 4
+VBE_BOOT_MODE_OFF           equ 8
+VBE_BOOT_FB_PHYS_OFF        equ 12
+VBE_BOOT_PITCH_OFF          equ 16
+VBE_BOOT_WIDTH_OFF          equ 20
+VBE_BOOT_HEIGHT_OFF         equ 24
+VBE_BOOT_BPP_OFF            equ 28
+VBE_BOOT_FB_SIZE_OFF        equ 32
+
+; VBE mode info block offsets
+VBE_MI_ATTR_OFF             equ 0x00
+VBE_MI_PITCH_OFF            equ 0x10
+VBE_MI_WIDTH_OFF            equ 0x12
+VBE_MI_HEIGHT_OFF           equ 0x14
+VBE_MI_BPP_OFF              equ 0x19
+VBE_MI_FB_OFF               equ 0x28
 
 ; ---------------------------------------------------------------------------
 ; Entry point — 16-bit real mode
@@ -115,22 +152,20 @@ stage2_start:
     call print_string
 
     ; =====================================================================
+    ; Step 2.5: Set VBE graphics mode and store framebuffer boot info
+    ; =====================================================================
+    call setup_vbe
+
+    ; =====================================================================
     ; Step 3: Load GDT
     ; =====================================================================
-    mov si, msg_gdt
-    call print_string
+    call setup_runtime_gdt
 
-    lgdt [gdt_descriptor]
-
-    mov si, msg_ok
-    call print_string
+    lgdt [GDT_RUNTIME_DESC_ADDR]
 
     ; =====================================================================
     ; Step 4: Switch to protected mode
     ; =====================================================================
-    mov si, msg_pm
-    call print_string
-
     cli                             ; No IDT for protected mode yet
 
     mov eax, cr0
@@ -244,6 +279,115 @@ detect_e820:
     cli
     hlt
     jmp .e820_fail
+
+; ---------------------------------------------------------------------------
+; setup_vbe: Configure VBE graphics mode and export framebuffer metadata.
+;   On success, stores a compact boot-info block at VBE_BOOT_INFO_ADDR.
+;   On failure, leaves status=0 and continues boot in text mode.
+; ---------------------------------------------------------------------------
+setup_vbe:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+
+    ; Clear boot-info handoff region.
+    mov di, VBE_BOOT_INFO_ADDR
+    xor ax, ax
+    mov cx, VBE_BOOT_INFO_WORDS
+    rep stosw
+
+    ; Stamp structure magic for kernel-side validation.
+    mov dword [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_MAGIC_OFF], VBE_BOOT_MAGIC
+
+    ; Verify VBE services are present first.
+    mov di, VBE_CTRL_INFO_ADDR
+    xor ax, ax
+    mov cx, VBE_CTRL_INFO_WORDS
+    rep stosw
+
+    mov dword [es:VBE_CTRL_INFO_ADDR], VBE_CTRL_MAGIC_REQ
+    mov ax, 0x4F00
+    mov di, VBE_CTRL_INFO_ADDR
+    int 0x10
+    cmp ax, 0x004F
+    jne .done
+    cmp dword [es:VBE_CTRL_INFO_ADDR], VBE_CTRL_MAGIC_OK
+    jne .done
+
+    ; Query mode info block for target mode.
+    mov ax, 0x4F01
+    mov cx, VBE_TARGET_MODE
+    mov di, VBE_MODE_INFO_ADDR
+    int 0x10
+    cmp ax, 0x004F
+    jne .done
+
+    ; Require linear framebuffer support for this milestone.
+    test word [es:VBE_MODE_INFO_ADDR + VBE_MI_ATTR_OFF], 0x0080
+    jz .done
+
+    ; Activate mode with LFB bit set.
+    mov ax, 0x4F02
+    mov bx, (VBE_TARGET_MODE | 0x4000)
+    int 0x10
+    cmp ax, 0x004F
+    jne .done
+
+    mov dword [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_STATUS_OFF], VBE_STATUS_ACTIVE
+    mov dword [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_MODE_OFF], VBE_TARGET_MODE
+
+    mov eax, [es:VBE_MODE_INFO_ADDR + VBE_MI_FB_OFF]
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_FB_PHYS_OFF], eax
+
+    xor eax, eax
+    mov ax, [es:VBE_MODE_INFO_ADDR + VBE_MI_PITCH_OFF]
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_PITCH_OFF], eax
+
+    xor eax, eax
+    mov ax, [es:VBE_MODE_INFO_ADDR + VBE_MI_WIDTH_OFF]
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_WIDTH_OFF], eax
+
+    xor eax, eax
+    mov ax, [es:VBE_MODE_INFO_ADDR + VBE_MI_HEIGHT_OFF]
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_HEIGHT_OFF], eax
+
+    xor eax, eax
+    mov al, [es:VBE_MODE_INFO_ADDR + VBE_MI_BPP_OFF]
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_BPP_OFF], eax
+
+    ; Store framebuffer byte size = pitch * height.
+    movzx eax, word [es:VBE_MODE_INFO_ADDR + VBE_MI_PITCH_OFF]
+    movzx edx, word [es:VBE_MODE_INFO_ADDR + VBE_MI_HEIGHT_OFF]
+    imul eax, edx
+    mov [es:VBE_BOOT_INFO_ADDR + VBE_BOOT_FB_SIZE_OFF], eax
+
+.done:
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    ret
+
+; ---------------------------------------------------------------------------
+; setup_runtime_gdt: Build a clean 3-entry flat GDT in low memory.
+;   This avoids relying on stage2 image bytes that BIOS calls may clobber.
+; ---------------------------------------------------------------------------
+setup_runtime_gdt:
+    ; Null descriptor
+    mov dword [GDT_RUNTIME_ADDR + 0], 0x00000000
+    mov dword [GDT_RUNTIME_ADDR + 4], 0x00000000
+
+    ; Code descriptor: base=0, limit=4GB, access=0x9A, flags=0xCF
+    mov dword [GDT_RUNTIME_ADDR + 8],  0x0000FFFF
+    mov dword [GDT_RUNTIME_ADDR + 12], 0x00CF9A00
+
+    ; Data descriptor: base=0, limit=4GB, access=0x92, flags=0xCF
+    mov dword [GDT_RUNTIME_ADDR + 16], 0x0000FFFF
+    mov dword [GDT_RUNTIME_ADDR + 20], 0x00CF9200
+
+    ; GDTR pseudo-descriptor
+    mov word [GDT_RUNTIME_DESC_ADDR], (3 * 8) - 1
+    mov dword [GDT_RUNTIME_DESC_ADDR + 2], GDT_RUNTIME_ADDR
+    ret
 
 ; ---------------------------------------------------------------------------
 ; check_a20: Test if A20 line is enabled
@@ -486,6 +630,6 @@ msg_pm_ok:
     db "PM OK -> kernel", 0
 
 ; ---------------------------------------------------------------------------
-; Pad to exactly 1024 bytes (2 sectors)
+; Pad to STAGE2_SECTORS * 512 bytes
 ; ---------------------------------------------------------------------------
     times STAGE2_PADDED_SIZE - ($ - $$) db 0

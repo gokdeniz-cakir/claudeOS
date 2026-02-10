@@ -50,6 +50,7 @@ VFS_SRC        := $(KERNEL_DIR)/vfs.c
 INITRD_SRC     := $(KERNEL_DIR)/initrd.c
 ATA_SRC        := $(KERNEL_DIR)/ata.c
 FAT32_SRC      := $(KERNEL_DIR)/fat32.c
+VBE_SRC        := $(KERNEL_DIR)/vbe.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
 LIBCTEST_SRC   := $(USER_DIR)/libctest.c
@@ -101,6 +102,7 @@ VFS_OBJ        := $(BUILD_DIR)/vfs.o
 INITRD_OBJ     := $(BUILD_DIR)/initrd.o
 ATA_OBJ        := $(BUILD_DIR)/ata.o
 FAT32_OBJ      := $(BUILD_DIR)/fat32.o
+VBE_OBJ        := $(BUILD_DIR)/vbe.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
 ELF_DEMO_BLOB_OBJ := $(BUILD_DIR)/elf_demo_blob.o
@@ -142,6 +144,7 @@ QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
                   -no-reboot -no-shutdown -serial stdio
 
 # --- Boot image limits -------------------------------------------------------
+STAGE2_SECTORS    := 4
 KERNEL_MAX_SECTORS := 190
 KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
@@ -154,11 +157,13 @@ all: $(OS_BIN)
 
 # --- MBR (flat binary, 512 bytes) -------------------------------------------
 $(MBR_BIN): $(MBR_SRC) Makefile | $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
+	$(NASM) $(NASMFLAGS_BIN) -D STAGE2_SECTORS=$(STAGE2_SECTORS) \
+		-D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
-# --- Stage 2 (flat binary, padded to 1024 bytes, 2 sectors) -----------------
+# --- Stage 2 (flat binary, padded to STAGE2_SECTORS) ------------------------
 $(STAGE2_BIN): $(STAGE2_SRC) Makefile | $(BUILD_DIR)
-	$(NASM) $(NASMFLAGS_BIN) -D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
+	$(NASM) $(NASMFLAGS_BIN) -D STAGE2_SECTORS=$(STAGE2_SECTORS) \
+		-D KERNEL_MAX_SECTORS=$(KERNEL_MAX_SECTORS) -o $@ $<
 
 # --- Kernel entry (ELF object) ----------------------------------------------
 $(KENTRY_OBJ): $(KENTRY_SRC) | $(BUILD_DIR)
@@ -276,6 +281,10 @@ $(ATA_OBJ): $(ATA_SRC) | $(BUILD_DIR)
 $(FAT32_OBJ): $(FAT32_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- VBE framebuffer bootstrap (ELF object) ---------------------------------
+$(VBE_OBJ): $(VBE_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- Embedded user ELF demo build chain --------------------------------------
 $(ELF_DEMO_OBJ): $(ELF_DEMO_SRC) | $(BUILD_DIR)
 	$(NASM) $(NASMFLAGS_ELF) -o $@ $<
@@ -375,6 +384,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
                $(PIC_OBJ) $(IRQ_OBJ) $(IRQ_STUBS_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
+               $(VBE_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
