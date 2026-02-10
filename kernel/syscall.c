@@ -4,7 +4,9 @@
 
 #include "elf.h"
 #include "heap.h"
+#include "keyboard.h"
 #include "paging.h"
+#include "pit.h"
 #include "pmm.h"
 #include "process.h"
 #include "serial.h"
@@ -25,6 +27,13 @@ static struct spinlock syscall_write_lock = SPINLOCK_INITIALIZER;
 
 struct fork_child_exec_context {
     char path[PROCESS_IMAGE_PATH_MAX];
+};
+
+struct syscall_user_kbd_event {
+    uint8_t scancode;
+    uint8_t pressed;
+    uint8_t extended;
+    uint8_t reserved;
 };
 
 static uint32_t align_up_u32(uint32_t value, uint32_t alignment)
@@ -409,6 +418,37 @@ static uint32_t syscall_process_count(void)
     return process_count();
 }
 
+static int32_t syscall_kbd_read(uint32_t user_event_ptr)
+{
+    struct keyboard_event event;
+    struct syscall_user_kbd_event user_event;
+
+    if (user_event_ptr == 0U) {
+        return -1;
+    }
+
+    if (syscall_validate_user_mapping(user_event_ptr, sizeof(user_event)) == 0U) {
+        return -1;
+    }
+
+    if (keyboard_read_event(&event) == 0) {
+        return 0;
+    }
+
+    user_event.scancode = event.scancode;
+    user_event.pressed = event.pressed;
+    user_event.extended = event.extended;
+    user_event.reserved = 0U;
+
+    *(struct syscall_user_kbd_event *)(uintptr_t)user_event_ptr = user_event;
+    return 1;
+}
+
+static uint32_t syscall_ticks_ms(void)
+{
+    return (pit_get_ticks() * 1000U) / PIT_TARGET_FREQ;
+}
+
 static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
                                  uint32_t arg2, uint32_t arg3, uint32_t arg4,
                                  uint32_t arg5)
@@ -438,6 +478,10 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return syscall_getpid();
         case SYSCALL_PCOUNT:
             return syscall_process_count();
+        case SYSCALL_KBD_READ:
+            return (uint32_t)(int32_t)syscall_kbd_read(arg0);
+        case SYSCALL_TICKS_MS:
+            return syscall_ticks_ms();
         default:
             return SYSCALL_RET_ENOSYS;
     }

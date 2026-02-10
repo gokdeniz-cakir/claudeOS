@@ -34,6 +34,7 @@ void elf_run_shell(void);
 void elf_run_uhello(void);
 void elf_run_ucat(void);
 void elf_run_uexec(void);
+void elf_run_doom(void);
 void elf_run_apps_demo(void);
 
 #endif /* CLAUDE_ELF_H */

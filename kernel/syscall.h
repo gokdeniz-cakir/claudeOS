@@ -13,6 +13,8 @@
 #define SYSCALL_EXEC     8U
 #define SYSCALL_GETPID   9U
 #define SYSCALL_PCOUNT   10U
+#define SYSCALL_KBD_READ 11U
+#define SYSCALL_TICKS_MS 12U
 
 #define SYSCALL_O_READ   0x1U
 #define SYSCALL_O_WRITE  0x2U

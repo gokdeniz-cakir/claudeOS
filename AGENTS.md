@@ -117,4 +117,4 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 39. Expand libc (sprintf, fopen/fread/fclose, full malloc, and whatever else DOOM needs) - Completed: user/libc/include/stdio.h, user/libc/include/stdlib.h, user/libc/include/string.h, user/libc/stdio.c, user/libc/malloc.c, user/libc/string.c, user/libctest.c, kernel/syscall.c
 40. Large userspace memory support (ensure VMM can give a process 16MB+ heap) - Completed: kernel/process.c, kernel/elf.c, user/libctest.c
 41. Port doomgeneric (implement the ~5 platform functions, patch DOOM source, compile as ELF) - Completed: user/doomgeneric/*, user/libc/*, Makefile, boot/mbr.asm, boot/stage2.asm
-42. Polish (sound stub, FPS timing, input mapping, demo)
+42. Polish (sound stub, FPS timing, input mapping, demo) - Completed: user/doomgeneric/doomgeneric_claudeos.c, user/doomgeneric/i_sound.c, kernel/syscall.c, kernel/keyboard.c, kernel/console.c, kernel/elf.c, tools/mkfat32_image.py, tools/run_task42_demo.sh, Makefile

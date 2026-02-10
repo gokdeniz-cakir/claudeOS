@@ -1391,3 +1391,44 @@
 - Verified:
   - `make doom -j4` passes and emits `build/doomgeneric.elf` (390360 bytes).
   - `make -j4` passes with updated kernel sector cap.
+
+## 2026-02-10 22:22:23 +0300 - Phase 9, Task 42: Polish (sound stub, FPS timing, input mapping, demo)
+- Completed: real timing and input wiring for Doom userspace backend.
+  - Added PIT-backed userspace timing syscall and keyboard-event polling syscall:
+    - kernel: `kernel/syscall.h`, `kernel/syscall.c`, `kernel/pit.h`, `kernel/keyboard.h`, `kernel/keyboard.c`
+    - userspace libc: `user/libc/include/unistd.h`, `user/libc/syscall.c`
+  - Keyboard driver now keeps a raw non-blocking event queue (scancode + press/release + extended flag) in addition to ASCII queue.
+  - Doom backend (`user/doomgeneric/doomgeneric_claudeos.c`) now:
+    - uses real `ticks_ms()` for `DG_GetTicksMs`
+    - uses polling sleep against kernel tick source for `DG_SleepMs`
+    - maps PS/2 set1 events to Doom keys in `DG_GetKey`
+    - applies 35 FPS pacing in main loop
+    - prints periodic FPS markers
+    - auto-detects IWAD path candidates and emits deterministic guidance if missing.
+- Completed: sound-path polish for no-audio target.
+  - `user/doomgeneric/i_sound.c` now logs a clear one-time silent-mode marker when no sound/music backend is active on ClaudeOS.
+- Completed: Doom launch and demo integration.
+  - Added console command `doom`:
+    - `kernel/console.c`, `kernel/elf.h`, `kernel/elf.c`
+    - spawns `/fat/DOOMGEN.ELF` via VFS/FAT32.
+  - FAT32 image tool now optionally embeds built Doom ELF as `DOOMGEN.ELF`:
+    - `tools/mkfat32_image.py`
+    - `Makefile` updated so `build/fat32.img` depends on `build/doomgeneric.elf`.
+  - Added scripted Task 42 validation:
+    - `tools/run_task42_demo.sh`
+    - `Makefile` target: `doomdemo`.
+- Issue encountered and resolved:
+  - Attempting to embed Doom ELF in initrd made `kernel.bin` exceed bootloader image cap.
+  - Resolved by placing Doom ELF in FAT32 image instead of embedded initrd, keeping kernel size within current bootloader constraints.
+  - Found/fixed a userspace startup fault: `crt0` did not pass `argc/argv` to `main()`, causing immediate page fault for GCC-generated Doom `main`.
+    - fixed in `user/libc/crt0.asm` by building a valid empty argv frame.
+- Reference docs consulted:
+  - `docs/core/System_Calls.md`
+  - `docs/core/Programmable_Interval_Timer.md`
+  - `docs/core/PS_2_Keyboard.md`
+  - `docs/core/Sound.md`
+- Verified:
+  - `make -j4` passes.
+  - `make doom -j4` passes.
+  - `make demo` (Task 34 regression) passes.
+  - `make doomdemo` passes and validates Doom markers in headless QEMU serial log.

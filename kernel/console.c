@@ -43,7 +43,7 @@ static void console_execute_line(void)
 {
     if (console_line_equals("help") != 0U) {
         vga_puts("Commands: help, ring3test, elftest, forkexec, libctest, shell\n");
-        vga_puts("          uhello, ucat, uexec, appsdemo\n");
+        vga_puts("          uhello, ucat, uexec, appsdemo, doom\n");
         vga_puts("          wmstart  (press q to exit window manager)\n");
         serial_puts("[CONSOLE] help shown\n");
         return;
@@ -91,6 +91,11 @@ static void console_execute_line(void)
 
     if (console_line_equals("appsdemo") != 0U) {
         elf_run_apps_demo();
+        return;
+    }
+
+    if (console_line_equals("doom") != 0U) {
+        elf_run_doom();
         return;
     }
 

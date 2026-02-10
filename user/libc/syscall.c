@@ -12,6 +12,8 @@
 #define SYSCALL_EXEC   8U
 #define SYSCALL_GETPID 9U
 #define SYSCALL_PCOUNT 10U
+#define SYSCALL_KBD_READ 11U
+#define SYSCALL_TICKS_MS 12U
 
 static inline uint32_t syscall3(uint32_t number, uint32_t arg0, uint32_t arg1,
                                 uint32_t arg2)
@@ -68,6 +70,17 @@ int getpid(void)
 int proc_count(void)
 {
     return (int)(int32_t)syscall3(SYSCALL_PCOUNT, 0U, 0U, 0U);
+}
+
+int kbd_read_event(struct kbd_event *event)
+{
+    return (int)(int32_t)syscall3(SYSCALL_KBD_READ,
+                                  (uint32_t)(uintptr_t)event, 0U, 0U);
+}
+
+uint32_t ticks_ms(void)
+{
+    return syscall3(SYSCALL_TICKS_MS, 0U, 0U, 0U);
 }
 
 void *sbrk(int32_t increment)

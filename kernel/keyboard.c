@@ -28,6 +28,8 @@
 
 #define KBD_BUFFER_SIZE         128u
 #define KBD_BUFFER_MASK         (KBD_BUFFER_SIZE - 1u)
+#define KBD_EVENT_BUFFER_SIZE   128u
+#define KBD_EVENT_BUFFER_MASK   (KBD_EVENT_BUFFER_SIZE - 1u)
 
 /* Scan code set 1, US QWERTY base map (no modifiers). */
 static const char scancode_set1[128] = {
@@ -59,6 +61,9 @@ static const char scancode_set1_shift[128] = {
 static volatile uint8_t keyboard_head = 0;
 static volatile uint8_t keyboard_tail = 0;
 static char keyboard_buffer[KBD_BUFFER_SIZE];
+static volatile uint8_t keyboard_event_head = 0;
+static volatile uint8_t keyboard_event_tail = 0;
+static struct keyboard_event keyboard_event_buffer[KBD_EVENT_BUFFER_SIZE];
 static struct spinlock keyboard_buffer_lock = SPINLOCK_INITIALIZER;
 
 static uint8_t keyboard_left_shift = 0;
@@ -144,6 +149,25 @@ static void keyboard_buffer_push(char c)
     spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
 }
 
+static void keyboard_event_push(uint8_t scancode, uint8_t pressed,
+                                uint8_t extended)
+{
+    uint32_t flags = spinlock_lock_irqsave(&keyboard_buffer_lock);
+    uint8_t head = keyboard_event_head;
+    uint8_t next = (uint8_t)((head + 1u) & KBD_EVENT_BUFFER_MASK);
+
+    if (next == keyboard_event_tail) {
+        spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
+        return;
+    }
+
+    keyboard_event_buffer[head].scancode = scancode;
+    keyboard_event_buffer[head].pressed = pressed;
+    keyboard_event_buffer[head].extended = extended;
+    keyboard_event_head = next;
+    spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
+}
+
 static char keyboard_translate_scancode(uint8_t scancode)
 {
     char c = scancode_set1[scancode];
@@ -173,6 +197,7 @@ static void keyboard_irq_handler(struct isr_regs *regs)
     uint8_t scancode;
     uint8_t released;
     uint8_t keycode;
+    uint8_t extended;
     char ascii;
 
     (void)regs;
@@ -186,10 +211,15 @@ static void keyboard_irq_handler(struct isr_regs *regs)
 
     released = (uint8_t)(scancode & 0x80);
     keycode = (uint8_t)(scancode & 0x7F);
+    extended = keyboard_extended_prefix;
 
-    if (keyboard_extended_prefix != 0u) {
+    if (extended != 0u) {
         keyboard_extended_prefix = 0;
+    }
 
+    keyboard_event_push(keycode, (uint8_t)(released == 0u), extended);
+
+    if (extended != 0u) {
         if (released == 0u) {
             if (keycode == 0x1C) {
                 keyboard_buffer_push('\n');   /* keypad Enter */
@@ -235,6 +265,8 @@ void keyboard_init(void)
     keyboard_caps_lock = 0;
     keyboard_extended_prefix = 0;
     spinlock_init(&keyboard_buffer_lock);
+    keyboard_event_head = 0;
+    keyboard_event_tail = 0;
 
     (void)ps2_write_command(PS2_CMD_DISABLE_PORT1);
     (void)ps2_write_command(PS2_CMD_DISABLE_PORT2);
@@ -286,6 +318,28 @@ int keyboard_read_char(char *out_char)
 
     *out_char = keyboard_buffer[tail];
     keyboard_tail = (uint8_t)((tail + 1u) & KBD_BUFFER_MASK);
+    spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
+    return 1;
+}
+
+int keyboard_read_event(struct keyboard_event *out_event)
+{
+    uint8_t tail;
+    uint32_t flags;
+
+    if (out_event == 0) {
+        return 0;
+    }
+
+    flags = spinlock_lock_irqsave(&keyboard_buffer_lock);
+    tail = keyboard_event_tail;
+    if (tail == keyboard_event_head) {
+        spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
+        return 0;
+    }
+
+    *out_event = keyboard_event_buffer[tail];
+    keyboard_event_tail = (uint8_t)((tail + 1u) & KBD_EVENT_BUFFER_MASK);
     spinlock_unlock_irqrestore(&keyboard_buffer_lock, flags);
     return 1;
 }

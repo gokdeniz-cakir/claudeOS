@@ -60,6 +60,10 @@ static music_module_t *music_module = NULL;
 int snd_musicdevice = SNDDEVICE_SB;
 int snd_sfxdevice = SNDDEVICE_SB;
 
+#ifdef CLAUDEOS
+static int claudeos_sound_stub_logged = 0;
+#endif
+
 // DOS-specific options: These are unused but should be maintained
 // so that the config file can be shared between chocolate
 // doom and doom.exe
@@ -194,6 +198,17 @@ void I_InitSound(boolean use_sfx_prefix)
             InitMusicModule();
         }
     }
+
+#ifdef CLAUDEOS
+    if (claudeos_sound_stub_logged == 0
+     && !nosound
+     && sound_module == NULL
+     && music_module == NULL)
+    {
+        printf("[DOOM] sound backend stub active (silent mode)\n");
+        claudeos_sound_stub_logged = 1;
+    }
+#endif
 
 }
 
@@ -417,4 +432,3 @@ void I_BindSoundVariables(void)
     // to crash when it looped.  If this is an old SDL_mixer version,
     // disable MIDI.
 }
-

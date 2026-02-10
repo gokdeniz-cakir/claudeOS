@@ -6,6 +6,7 @@ Image layout:
 - FAT32 boot sector at LBA 0 (no MBR/partition table)
 - Root directory contains:
   - HELLO.TXT
+  - DOOMGEN.ELF (optional, copied from build/doomgeneric.elf when present)
   - DOCS/ (directory)
 - DOCS contains:
   - INFO.TXT
@@ -30,6 +31,7 @@ BACKUP_BOOT_SECTOR = 6
 
 HELLO_TEXT = b"Hello from ClaudeOS FAT32 via ATA PIO.\n"
 INFO_TEXT = b"Subdirectory read path works.\n"
+DOOM_ELF_83_NAME = "DOOMGEN.ELF"
 
 
 def compute_fat_sectors(total_sectors: int) -> int:
@@ -110,10 +112,28 @@ def main() -> int:
     fat_start_lba = RESERVED_SECTORS
     data_start_lba = RESERVED_SECTORS + FAT_COUNT * fat_sectors
 
+    cluster_bytes = SECTOR_SIZE * SECTORS_PER_CLUSTER
+
+    # Optional Doom userspace ELF payload is sourced from the build dir.
+    doom_payload = b""
+    doom_payload_clusters: list[int] = []
+    doom_payload_path = output.parent / "doomgeneric.elf"
+    if doom_payload_path.exists():
+        doom_payload = doom_payload_path.read_bytes()
+
     # Cluster assignment
-    cluster_docs_dir = 3
-    cluster_hello = 4
-    cluster_info = 5
+    next_cluster = 3
+    cluster_docs_dir = next_cluster
+    next_cluster += 1
+    cluster_hello = next_cluster
+    next_cluster += 1
+    cluster_info = next_cluster
+    next_cluster += 1
+
+    if doom_payload:
+        doom_cluster_count = (len(doom_payload) + cluster_bytes - 1) // cluster_bytes
+        doom_payload_clusters = list(range(next_cluster, next_cluster + doom_cluster_count))
+        next_cluster += doom_cluster_count
 
     image = bytearray(TOTAL_SECTORS * SECTOR_SIZE)
 
@@ -170,6 +190,13 @@ def main() -> int:
         cluster_hello: 0x0FFFFFFF,
         cluster_info: 0x0FFFFFFF,
     }
+    if doom_payload_clusters:
+        for index, cluster in enumerate(doom_payload_clusters):
+            if index + 1 < len(doom_payload_clusters):
+                fat_entries[cluster] = doom_payload_clusters[index + 1]
+            else:
+                fat_entries[cluster] = 0x0FFFFFFF
+
     for clus, value in fat_entries.items():
         struct.pack_into("<I", fat, clus * 4, value)
 
@@ -188,6 +215,16 @@ def main() -> int:
         make_dir_entry(short_name_83("HELLO.TXT"), 0x20, cluster_hello, len(HELLO_TEXT)),
         make_dir_entry(short_name_83("DOCS"), 0x10, cluster_docs_dir, 0),
     ]
+    if doom_payload_clusters:
+        root_entries.append(
+            make_dir_entry(
+                short_name_83(DOOM_ELF_83_NAME),
+                0x20,
+                doom_payload_clusters[0],
+                len(doom_payload),
+            )
+        )
+
     for i, ent in enumerate(root_entries):
         root_dir[i * 32 : (i + 1) * 32] = ent
     root_dir[len(root_entries) * 32] = 0x00
@@ -208,6 +245,11 @@ def main() -> int:
     # File data
     write_cluster(image, data_start_lba, cluster_hello, HELLO_TEXT)
     write_cluster(image, data_start_lba, cluster_info, INFO_TEXT)
+    if doom_payload_clusters:
+        for index, cluster in enumerate(doom_payload_clusters):
+            start = index * cluster_bytes
+            end = start + cluster_bytes
+            write_cluster(image, data_start_lba, cluster, doom_payload[start:end])
 
     output.write_bytes(image)
     return 0

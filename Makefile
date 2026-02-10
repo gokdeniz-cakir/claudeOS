@@ -79,6 +79,7 @@ INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
 TOOLS_DIR      := tools
 FAT32_IMG_TOOL := $(TOOLS_DIR)/mkfat32_image.py
 TASK34_DEMO_SCRIPT := $(TOOLS_DIR)/run_task34_demo.sh
+TASK42_DEMO_SCRIPT := $(TOOLS_DIR)/run_task42_demo.sh
 
 # --- Build outputs -----------------------------------------------------------
 MBR_BIN        := $(BUILD_DIR)/mbr.bin
@@ -174,7 +175,7 @@ KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
 
 # --- Phony targets -----------------------------------------------------------
-.PHONY: all run demo doom clean
+.PHONY: all run demo doom doomdemo clean
 
 # --- Default target ----------------------------------------------------------
 all: $(OS_BIN)
@@ -450,7 +451,7 @@ $(INITRD_BLOB_OBJ): $(INITRD_TAR) | $(BUILD_DIR)
 	$(OBJCOPY) -I binary -O elf32-i386 -B i386 $< $@
 
 # --- Secondary FAT32 test image for ATA PIO/FAT32 bring-up -------------------
-$(FAT32_IMG): $(FAT32_IMG_TOOL) | $(BUILD_DIR)
+$(FAT32_IMG): $(FAT32_IMG_TOOL) $(DOOM_ELF) | $(BUILD_DIR)
 	python3 $(FAT32_IMG_TOOL) $@
 
 # --- Link kernel (flat binary at 0xC0100000, loaded at physical 0x100000) ---
@@ -498,6 +499,9 @@ demo: $(OS_BIN) $(FAT32_IMG)
 	bash $(TASK34_DEMO_SCRIPT)
 
 doom: $(DOOM_ELF)
+
+doomdemo: $(OS_BIN) $(FAT32_IMG)
+	bash $(TASK42_DEMO_SCRIPT)
 
 # --- Clean -------------------------------------------------------------------
 clean:

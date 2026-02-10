@@ -33,6 +33,7 @@
 #define ELF_UHELLO_VFS_PATH     "/uhello.elf"
 #define ELF_UCAT_VFS_PATH       "/ucat.elf"
 #define ELF_UEXEC_VFS_PATH      "/uexec.elf"
+#define ELF_DOOM_VFS_PATH       "/fat/DOOMGEN.ELF"
 
 /* Single-threaded loader scratch list; avoids 4KB stack frame pressure. */
 static uint32_t elf_mapped_pages[ELF_MAX_MAPPED_PAGES];
@@ -715,6 +716,20 @@ void elf_run_uexec(void)
 
     vga_puts("[ELF] spawned uexec process.\n");
     serial_puts("[ELF] spawned uexec process\n");
+}
+
+void elf_run_doom(void)
+{
+    int32_t pid;
+
+    pid = elf_spawn_vfs_user_process("doomgeneric", ELF_DOOM_VFS_PATH);
+    if (pid < 0) {
+        elf_log_spawn_failure("[ELF] doom spawn failed.\n");
+        return;
+    }
+
+    vga_puts("[ELF] spawned doomgeneric process.\n");
+    serial_puts("[ELF] spawned doomgeneric process\n");
 }
 
 void elf_run_apps_demo(void)
