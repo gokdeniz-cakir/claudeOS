@@ -1044,3 +1044,16 @@ int ferror(FILE *stream)
 
     return (int)stream->error;
 }
+
+int remove(const char *path)
+{
+    (void)path;
+    return -1;
+}
+
+int rename(const char *old_path, const char *new_path)
+{
+    (void)old_path;
+    (void)new_path;
+    return -1;
+}

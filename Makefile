@@ -17,6 +17,7 @@ USER_DIR   := user
 BUILD_DIR  := build
 USER_LIBC_DIR := $(USER_DIR)/libc
 USER_LIBC_INCLUDE_DIR := $(USER_LIBC_DIR)/include
+DOOM_DIR   := $(USER_DIR)/doomgeneric
 
 # --- Source files ------------------------------------------------------------
 MBR_SRC        := $(BOOT_DIR)/mbr.asm
@@ -66,6 +67,12 @@ LIBC_SYSCALL_SRC := $(USER_LIBC_DIR)/syscall.c
 LIBC_STDIO_SRC := $(USER_LIBC_DIR)/stdio.c
 LIBC_STRING_SRC := $(USER_LIBC_DIR)/string.c
 LIBC_MALLOC_SRC := $(USER_LIBC_DIR)/malloc.c
+LIBC_STDLIB_SRC := $(USER_LIBC_DIR)/stdlib.c
+LIBC_CTYPE_SRC := $(USER_LIBC_DIR)/ctype.c
+LIBC_STRINGS_SRC := $(USER_LIBC_DIR)/strings.c
+LIBC_MATH_SRC := $(USER_LIBC_DIR)/math.c
+LIBC_ERRNO_SRC := $(USER_LIBC_DIR)/errno.c
+DOOM_BACKEND_SRC := $(DOOM_DIR)/doomgeneric_claudeos.c
 LINKER_SCRIPT  := linker.ld
 INITRD_DIR     := initrd
 INITRD_INPUTS  := $(shell find $(INITRD_DIR) -type f -o -type d 2>/dev/null)
@@ -121,6 +128,11 @@ LIBC_SYSCALL_OBJ := $(BUILD_DIR)/libc_syscall.o
 LIBC_STDIO_OBJ := $(BUILD_DIR)/libc_stdio.o
 LIBC_STRING_OBJ := $(BUILD_DIR)/libc_string.o
 LIBC_MALLOC_OBJ := $(BUILD_DIR)/libc_malloc.o
+LIBC_STDLIB_OBJ := $(BUILD_DIR)/libc_stdlib.o
+LIBC_CTYPE_OBJ := $(BUILD_DIR)/libc_ctype.o
+LIBC_STRINGS_OBJ := $(BUILD_DIR)/libc_strings.o
+LIBC_MATH_OBJ := $(BUILD_DIR)/libc_math.o
+LIBC_ERRNO_OBJ := $(BUILD_DIR)/libc_errno.o
 LIBCTEST_ELF   := $(BUILD_DIR)/libctest.elf
 SHELL_OBJ      := $(BUILD_DIR)/shell.o
 SHELL_ELF      := $(BUILD_DIR)/shell.elf
@@ -137,6 +149,7 @@ INITRD_BLOB_OBJ := $(BUILD_DIR)/initrd_blob.o
 FAT32_IMG      := $(BUILD_DIR)/fat32.img
 KERNEL_BIN     := $(BUILD_DIR)/kernel.bin
 OS_BIN         := $(BUILD_DIR)/os.bin
+DOOM_ELF       := $(BUILD_DIR)/doomgeneric.elf
 
 # --- Flags -------------------------------------------------------------------
 NASMFLAGS_BIN  := -f bin
@@ -144,6 +157,11 @@ NASMFLAGS_ELF  := -f elf32
 CFLAGS         := -std=c99 -Wall -Wextra -Werror -ffreestanding -fno-builtin \
                   -nostdlib -m32 -O2 -g
 USER_CFLAGS    := $(filter-out -g,$(CFLAGS)) -I$(USER_LIBC_INCLUDE_DIR)
+DOOM_CFLAGS    := $(filter-out -Werror,$(USER_CFLAGS)) \
+                  -I$(DOOM_DIR) \
+                  -DCLAUDEOS -DNORMALUNIX -DLINUX -DSNDSERV -D_DEFAULT_SOURCE \
+                  -DNDEBUG
+LIBGCC_A       := $(shell $(CC) -print-libgcc-file-name)
 LDFLAGS        := -T $(LINKER_SCRIPT) -nostdlib -lgcc -Wl,--oformat,binary
 QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
                   -drive format=raw,file=$(FAT32_IMG),if=ide,index=1 \
@@ -151,12 +169,12 @@ QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
 
 # --- Boot image limits -------------------------------------------------------
 STAGE2_SECTORS    := 4
-KERNEL_MAX_SECTORS := 240
+KERNEL_MAX_SECTORS := 256
 KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
 
 # --- Phony targets -----------------------------------------------------------
-.PHONY: all run demo clean
+.PHONY: all run demo doom clean
 
 # --- Default target ----------------------------------------------------------
 all: $(OS_BIN)
@@ -338,6 +356,21 @@ $(LIBC_STRING_OBJ): $(LIBC_STRING_SRC) | $(BUILD_DIR)
 $(LIBC_MALLOC_OBJ): $(LIBC_MALLOC_SRC) | $(BUILD_DIR)
 	$(CC) $(USER_CFLAGS) -c -o $@ $<
 
+$(LIBC_STDLIB_OBJ): $(LIBC_STDLIB_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_CTYPE_OBJ): $(LIBC_CTYPE_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_STRINGS_OBJ): $(LIBC_STRINGS_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_MATH_OBJ): $(LIBC_MATH_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
+$(LIBC_ERRNO_OBJ): $(LIBC_ERRNO_SRC) | $(BUILD_DIR)
+	$(CC) $(USER_CFLAGS) -c -o $@ $<
+
 $(LIBCTEST_OBJ): $(LIBCTEST_SRC) | $(BUILD_DIR)
 	$(CC) $(USER_CFLAGS) -c -o $@ $<
 
@@ -345,7 +378,9 @@ $(SHELL_OBJ): $(SHELL_SRC) | $(BUILD_DIR)
 	$(CC) $(USER_CFLAGS) -c -o $@ $<
 
 USER_LIBC_OBJS := $(LIBC_CRT0_OBJ) $(LIBC_SYSCALL_OBJ) $(LIBC_STDIO_OBJ) \
-                  $(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ)
+                  $(LIBC_STRING_OBJ) $(LIBC_MALLOC_OBJ) $(LIBC_STDLIB_OBJ) \
+                  $(LIBC_CTYPE_OBJ) $(LIBC_STRINGS_OBJ) $(LIBC_MATH_OBJ) \
+                  $(LIBC_ERRNO_OBJ)
 
 $(LIBCTEST_ELF): $(USER_LIBC_OBJS) $(LIBCTEST_OBJ) | $(BUILD_DIR)
 	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08050000 -e _start -o $@ \
@@ -372,6 +407,27 @@ $(UEXEC_OBJ): $(UEXEC_SRC) | $(BUILD_DIR)
 
 $(UEXEC_ELF): $(UEXEC_OBJ) | $(BUILD_DIR)
 	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x0805C000 -e _start -o $@ $<
+
+DOOM_OBJ_NAMES := dummy am_map doomdef doomstat dstrings d_event d_items d_iwad \
+                  d_loop d_main d_mode d_net f_finale f_wipe g_game hu_lib hu_stuff \
+                  info i_cdmus i_endoom i_joystick i_scale i_sound i_system i_timer \
+                  memio m_argv m_bbox m_cheat m_config m_controls m_fixed m_menu \
+                  m_misc m_random p_ceilng p_doors p_enemy p_floor p_inter p_lights \
+                  p_map p_maputl p_mobj p_plats p_pspr p_saveg p_setup p_sight \
+                  p_spec p_switch p_telept p_tick p_user r_bsp r_data r_draw \
+                  r_main r_plane r_segs r_sky r_things sha1 sounds statdump st_lib \
+                  st_stuff s_sound tables v_video wi_stuff w_checksum w_file w_main \
+                  w_wad z_zone w_file_stdc i_input i_video doomgeneric \
+                  doomgeneric_claudeos
+
+DOOM_OBJS := $(addprefix $(BUILD_DIR)/doom_, $(addsuffix .o,$(DOOM_OBJ_NAMES)))
+
+$(BUILD_DIR)/doom_%.o: $(DOOM_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(DOOM_CFLAGS) -c -o $@ $<
+
+$(DOOM_ELF): $(USER_LIBC_OBJS) $(DOOM_OBJS) | $(BUILD_DIR)
+	$(LD_BIN) -m elf_i386 -nostdlib -s -Ttext 0x08060000 -e _start -o $@ \
+		$(USER_LIBC_OBJS) $(DOOM_OBJS) $(LIBGCC_A)
 
 # --- Embedded initrd tar image build chain -----------------------------------
 $(INITRD_ROOT_STAMP): $(INITRD_INPUTS) $(ELF_DEMO_ELF) $(LIBCTEST_ELF) \
@@ -440,6 +496,8 @@ run: $(OS_BIN) $(FAT32_IMG)
 
 demo: $(OS_BIN) $(FAT32_IMG)
 	bash $(TASK34_DEMO_SCRIPT)
+
+doom: $(DOOM_ELF)
 
 # --- Clean -------------------------------------------------------------------
 clean:

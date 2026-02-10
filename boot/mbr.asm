@@ -10,7 +10,7 @@
 [org 0x7C00]
 
 %ifndef KERNEL_MAX_SECTORS
-%define KERNEL_MAX_SECTORS 124
+%define KERNEL_MAX_SECTORS 256
 %endif
 
 %ifndef STAGE2_SECTORS

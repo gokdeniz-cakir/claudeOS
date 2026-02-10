@@ -40,4 +40,7 @@ void rewind(FILE *stream);
 int feof(FILE *stream);
 int ferror(FILE *stream);
 
+int remove(const char *path);
+int rename(const char *old_path, const char *new_path);
+
 #endif /* CLAUDE_USER_LIBC_STDIO_H */

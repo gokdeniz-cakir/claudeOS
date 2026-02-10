@@ -1,4 +1,5 @@
 #include "string.h"
+#include "stdlib.h"
 
 size_t strlen(const char *s)
 {
@@ -274,4 +275,46 @@ int memcmp(const void *a, const void *b, size_t n)
     }
 
     return 0;
+}
+
+char *strstr(const char *haystack, const char *needle)
+{
+    size_t i;
+    size_t needle_len;
+
+    if (haystack == 0 || needle == 0) {
+        return 0;
+    }
+
+    if (needle[0] == '\0') {
+        return (char *)haystack;
+    }
+
+    needle_len = strlen(needle);
+    for (i = 0U; haystack[i] != '\0'; i++) {
+        if (strncmp(&haystack[i], needle, needle_len) == 0) {
+            return (char *)&haystack[i];
+        }
+    }
+
+    return 0;
+}
+
+char *strdup(const char *s)
+{
+    size_t len;
+    char *copy;
+
+    if (s == 0) {
+        return 0;
+    }
+
+    len = strlen(s) + 1U;
+    copy = (char *)malloc(len);
+    if (copy == 0) {
+        return 0;
+    }
+
+    (void)memcpy(copy, s, len);
+    return copy;
 }

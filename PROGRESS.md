@@ -1367,3 +1367,27 @@
   - `make -j4` passes with `-Wall -Wextra -Werror`.
   - `make demo` passes.
   - demo serial log includes new marker: `[LIBC] sbrk 20MiB ok`.
+
+## 2026-02-10 22:05:11 +0300 - Phase 9, Task 41: Port doomgeneric
+- Completed: vendored `doomgeneric` source and added a ClaudeOS backend entrypoint.
+  - Added `user/doomgeneric/*` (upstream doomgeneric sources) and `user/doomgeneric/doomgeneric_claudeos.c`.
+  - Added `user/doomgeneric/LICENSE.doomgeneric`.
+- Completed: patched portability gaps for ClaudeOS userspace libc/syscall environment.
+  - Updated Doom sources (`i_system.c`, `m_misc.c`, `m_config.c`) to avoid unsupported host paths and `sscanf` integer parsing assumptions.
+  - Expanded userspace libc surface with required headers/APIs (`ctype`, `strings`, `math`, `errno`, `assert`, `fcntl`, `sys/types`, `sys/stat`, plus `stdlib`/`stdio`/`string` additions).
+  - Added libc source units: `stdlib.c`, `ctype.c`, `strings.c`, `math.c`, `errno.c`.
+- Build integration:
+  - `Makefile` now has a dedicated `doom` target that builds `build/doomgeneric.elf`.
+  - Added Doom compile/link object lists and `DOOM_CFLAGS`.
+  - Linked Doom ELF with toolchain `libgcc` to satisfy compiler runtime helpers (`__divdi3`).
+- Issue encountered and resolved during validation:
+  - Kernel growth exceeded existing boot-time kernel sector cap (`KERNEL_MAX_SECTORS=240`), causing `make` failure.
+  - Increased cap to `256` and synchronized defaults in `boot/mbr.asm` + `boot/stage2.asm`.
+- Reference docs consulted:
+  - `docs/core/C_Library.md`
+  - `docs/core/Creating_a_C_Library.md`
+  - `docs/core/Cross-Porting_Software.md`
+  - `docs/core/Portability.md`
+- Verified:
+  - `make doom -j4` passes and emits `build/doomgeneric.elf` (390360 bytes).
+  - `make -j4` passes with updated kernel sector cap.

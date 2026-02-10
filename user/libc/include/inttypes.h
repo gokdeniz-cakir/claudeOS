@@ -1,0 +1,6 @@
+#ifndef CLAUDE_USER_LIBC_INTTYPES_H
+#define CLAUDE_USER_LIBC_INTTYPES_H
+
+#include <stdint.h>
+
+#endif /* CLAUDE_USER_LIBC_INTTYPES_H */

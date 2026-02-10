@@ -13,6 +13,8 @@ char *strcat(char *dst, const char *src);
 char *strncat(char *dst, const char *src, size_t n);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
+char *strstr(const char *haystack, const char *needle);
+char *strdup(const char *s);
 void *memcpy(void *dst, const void *src, size_t n);
 void *memmove(void *dst, const void *src, size_t n);
 void *memset(void *dst, int value, size_t n);
