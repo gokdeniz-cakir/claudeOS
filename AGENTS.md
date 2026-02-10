@@ -115,6 +115,6 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 ### Phase 9: DOOM
 
 39. Expand libc (sprintf, fopen/fread/fclose, full malloc, and whatever else DOOM needs) - Completed: user/libc/include/stdio.h, user/libc/include/stdlib.h, user/libc/include/string.h, user/libc/stdio.c, user/libc/malloc.c, user/libc/string.c, user/libctest.c, kernel/syscall.c
-40. Large userspace memory support (ensure VMM can give a process 16MB+ heap)
+40. Large userspace memory support (ensure VMM can give a process 16MB+ heap) - Completed: kernel/process.c, kernel/elf.c, user/libctest.c
 41. Port doomgeneric (implement the ~5 platform functions, patch DOOM source, compile as ELF)
 42. Polish (sound stub, FPS timing, input mapping, demo)

@@ -23,7 +23,7 @@
 #define PF_W                    0x2U
 
 #define USER_KERNEL_SPLIT       0xC0000000U
-#define ELF_USER_STACK_PAGE     0x0BFF0000U
+#define ELF_USER_STACK_PAGE     0xBFF00000U
 #define ELF_USER_STACK_TOP      (ELF_USER_STACK_PAGE + PAGE_SIZE)
 #define ELF_MAX_MAPPED_PAGES    1024U
 #define ELF_MAX_FILE_SIZE       (1024U * 1024U)

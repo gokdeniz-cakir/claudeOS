@@ -1347,3 +1347,23 @@
 - Verified:
   - `make -j4` passes with `-Wall -Wextra -Werror`.
   - `make demo` passes end-to-end after libc changes.
+
+## 2026-02-10 21:44:55 +0300 - Phase 9, Task 40: Large Userspace Memory Support
+- Completed: increased userspace heap headroom so a single process can grow beyond 16MB safely.
+- Memory-layout updates:
+  - `kernel/process.c`
+    - raised `PROCESS_USER_HEAP_LIMIT` from `0x0A000000` (16MB window) to `0x40000000`.
+  - `kernel/elf.c`
+    - moved ELF user stack mapping from `0x0BFF0000` to `0xBFF00000` to keep stack far from heap growth.
+- Runtime validation update:
+  - `user/libctest.c`
+    - added a direct `sbrk` probe requesting `20MiB`, touching one byte per page, then shrinking back.
+- Reference docs consulted:
+  - `docs/core/Paging.md`
+  - `docs/core/Memory_Allocation.md`
+  - `docs/core/Program_Memory_Allocation_Types.md`
+  - `docs/core/Loading_a_Process.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - `make demo` passes.
+  - demo serial log includes new marker: `[LIBC] sbrk 20MiB ok`.

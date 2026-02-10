@@ -2,8 +2,11 @@
 #include "stdlib.h"
 #include "string.h"
 #include "unistd.h"
+#include <stdint.h>
 
 #define LIBCTEST_BUF_LEN  160U
+#define LIBCTEST_HEAP_PROBE_BYTES  (20U * 1024U * 1024U)
+#define LIBCTEST_HEAP_PROBE_STEP   4096U
 
 int main(void)
 {
@@ -11,6 +14,8 @@ int main(void)
     FILE *fp;
     ssize_t nread;
     char status[64];
+    void *heap_probe;
+    uint32_t offset;
 
     printf("[LIBC] user C program started\n");
 
@@ -58,6 +63,23 @@ int main(void)
 
     (void)fclose(fp);
     free(buf);
+    buf = 0;
+
+    heap_probe = sbrk((int32_t)LIBCTEST_HEAP_PROBE_BYTES);
+    if (heap_probe == (void *)0xFFFFFFFFU) {
+        printf("[LIBC] sbrk 20MiB failed\n");
+        goto done;
+    }
+
+    for (offset = 0U; offset < LIBCTEST_HEAP_PROBE_BYTES;
+         offset += LIBCTEST_HEAP_PROBE_STEP) {
+        ((volatile uint8_t *)heap_probe)[offset] = (uint8_t)(offset / LIBCTEST_HEAP_PROBE_STEP);
+    }
+    printf("[LIBC] sbrk 20MiB ok\n");
+
+    if (sbrk(-((int32_t)LIBCTEST_HEAP_PROBE_BYTES)) == (void *)0xFFFFFFFFU) {
+        printf("[LIBC] sbrk 20MiB release failed\n");
+    }
 
 done:
     exit(0);
