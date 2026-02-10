@@ -1432,3 +1432,15 @@
   - `make doom -j4` passes.
   - `make demo` (Task 34 regression) passes.
   - `make doomdemo` passes and validates Doom markers in headless QEMU serial log.
+
+## 2026-02-10 22:44:24 +0300 - Post-Task 42 Build Fix: Kernel Sector Cap Bump
+- Completed: fixed `make run` failure caused by kernel size growth beyond boot-time configured max sectors.
+  - Updated kernel image cap:
+    - `Makefile`: `KERNEL_MAX_SECTORS` raised from `256` to `300`.
+    - `boot/mbr.asm` and `boot/stage2.asm` default `KERNEL_MAX_SECTORS` synced to `300`.
+- Hardening:
+  - Added NASM assembly-time guard in `boot/mbr.asm` to fail fast if `KERNEL_MAX_SECTORS` exceeds what the current 3-chunk INT13 packet-read strategy can support.
+- Issue observed:
+  - `kernel.bin` reached `132588` bytes, exceeding previous cap (`131072`), which stopped `build/os.bin` generation.
+- Verified:
+  - `make -j4` passes and rebuilds `build/os.bin` successfully with the new cap.

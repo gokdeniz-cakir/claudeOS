@@ -170,7 +170,7 @@ QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
 
 # --- Boot image limits -------------------------------------------------------
 STAGE2_SECTORS    := 4
-KERNEL_MAX_SECTORS := 256
+KERNEL_MAX_SECTORS := 300
 KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
 

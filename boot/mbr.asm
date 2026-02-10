@@ -10,7 +10,7 @@
 [org 0x7C00]
 
 %ifndef KERNEL_MAX_SECTORS
-%define KERNEL_MAX_SECTORS 256
+%define KERNEL_MAX_SECTORS 300
 %endif
 
 %ifndef STAGE2_SECTORS
@@ -35,6 +35,10 @@ SECOND_READ_MAX     equ 127         ; INT 13h extensions packet read limit
 %else
 %define SECOND_READ_SECTORS (DISK_READ_SECTORS - FIRST_READ_SECTORS)
 %define THIRD_READ_SECTORS 0
+%endif
+
+%if THIRD_READ_SECTORS > SECOND_READ_MAX
+%error "KERNEL_MAX_SECTORS too large for current 3-chunk INT13 read strategy."
 %endif
 
 THIRD_READ_SEG      equ (SECOND_READ_SEG + ((SECOND_READ_SECTORS * 512) / 16))
