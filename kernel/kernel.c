@@ -10,6 +10,7 @@
 #include "pmm.h"
 #include "heap.h"
 #include "keyboard.h"
+#include "mouse.h"
 #include "console.h"
 #include "process.h"
 #include "tss.h"
@@ -99,6 +100,13 @@ void kernel_main(void)
     keyboard_init();
     vga_puts("PS/2 keyboard initialized (IRQ1).\n");
     serial_puts("Keyboard initialized\n");
+
+    mouse_init();
+    if (mouse_is_initialized() != 0) {
+        vga_puts("PS/2 mouse initialized (IRQ12).\n");
+    } else {
+        vga_puts("PS/2 mouse init failed.\n");
+    }
 
     process_init();
     vga_puts("Process subsystem initialized.\n");

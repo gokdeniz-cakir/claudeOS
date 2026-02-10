@@ -1215,3 +1215,35 @@
     - `[FB] initialized 1024x768 bpp=24 pitch=3072`
     - `[VGA] framebuffer console active`
   - `make demo` passes end-to-end regression checks.
+
+## 2026-02-10 20:32:15 +0300 - Phase 8, Task 37: PS/2 Mouse Driver (IRQ12)
+- Completed: Added a PS/2 mouse driver with IRQ12 packet handling and kernel-visible mouse state/event APIs.
+- New module:
+  - `kernel/mouse.c`, `kernel/mouse.h`
+    - controller/device bring-up sequence for auxiliary PS/2 port:
+      - read/update controller config (`0x20`/`0x60`) to enable IRQ12 and second-port clock
+      - enable second port (`0xA8`)
+      - send mouse commands via `0xD4` prefix:
+        - `0xF6` (set defaults)
+        - `0xF4` (enable data reporting)
+    - IRQ12 handler decodes standard 3-byte mouse packets.
+    - packet resynchronization using first-byte sync bit and overflow-bit discard.
+    - signed 9-bit X/Y delta reconstruction.
+    - non-blocking event queue + state snapshot API:
+      - `mouse_read_event()`
+      - `mouse_get_state()`
+      - `mouse_is_initialized()`
+- Integration:
+  - `kernel/kernel.c`:
+    - added `mouse_init()` during boot.
+    - VGA status line now reports whether mouse init succeeded.
+  - `Makefile`:
+    - added `kernel/mouse.c` compile rule and object link-in.
+- Reference docs consulted:
+  - `docs/core/PS_2_Mouse.md`
+  - `docs/core/I8042_PS_2_Controller.md`
+  - `docs/core/Mouse_Input.md`
+- Verified:
+  - `make -j4` succeeds with `-Wall -Wextra -Werror`.
+  - serial boot now includes:
+    - `[MOUSE] PS/2 mouse initialized (IRQ12, 3-byte packets)` on successful init.

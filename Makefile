@@ -36,6 +36,7 @@ PMM_SRC        := $(KERNEL_DIR)/pmm.c
 PAGING_SRC     := $(KERNEL_DIR)/paging.c
 HEAP_SRC       := $(KERNEL_DIR)/heap.c
 KEYBOARD_SRC   := $(KERNEL_DIR)/keyboard.c
+MOUSE_SRC      := $(KERNEL_DIR)/mouse.c
 CONSOLE_SRC    := $(KERNEL_DIR)/console.c
 PROCESS_SRC    := $(KERNEL_DIR)/process.c
 PROCESS_STUBS_SRC := $(KERNEL_DIR)/process_stubs.asm
@@ -89,6 +90,7 @@ PMM_OBJ        := $(BUILD_DIR)/pmm.o
 PAGING_OBJ     := $(BUILD_DIR)/paging.o
 HEAP_OBJ       := $(BUILD_DIR)/heap.o
 KEYBOARD_OBJ   := $(BUILD_DIR)/keyboard.o
+MOUSE_OBJ      := $(BUILD_DIR)/mouse.o
 CONSOLE_OBJ    := $(BUILD_DIR)/console.o
 PROCESS_OBJ    := $(BUILD_DIR)/process.o
 PROCESS_STUBS_OBJ := $(BUILD_DIR)/process_stubs.o
@@ -225,6 +227,10 @@ $(HEAP_OBJ): $(HEAP_SRC) | $(BUILD_DIR)
 
 # --- PS/2 keyboard driver (ELF object) --------------------------------------
 $(KEYBOARD_OBJ): $(KEYBOARD_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# --- PS/2 mouse driver (ELF object) -----------------------------------------
+$(MOUSE_OBJ): $(MOUSE_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # --- Basic kernel console (ELF object) --------------------------------------
@@ -392,7 +398,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
                $(FB_OBJ) \
                $(VBE_OBJ) \
-               $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
+               $(KEYBOARD_OBJ) $(MOUSE_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \
                $(USERMODE_OBJ) $(SYSCALL_OBJ) $(SYSCALL_STUBS_OBJ) \
                $(ELF_OBJ) $(VFS_OBJ) $(INITRD_OBJ) $(ATA_OBJ) $(FAT32_OBJ) \
