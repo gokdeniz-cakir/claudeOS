@@ -50,6 +50,7 @@ VFS_SRC        := $(KERNEL_DIR)/vfs.c
 INITRD_SRC     := $(KERNEL_DIR)/initrd.c
 ATA_SRC        := $(KERNEL_DIR)/ata.c
 FAT32_SRC      := $(KERNEL_DIR)/fat32.c
+FB_SRC         := $(KERNEL_DIR)/fb.c
 VBE_SRC        := $(KERNEL_DIR)/vbe.c
 ELF_DEMO_SRC   := $(USER_DIR)/elf_demo.asm
 FORK_EXEC_DEMO_SRC := $(USER_DIR)/fork_exec_demo.asm
@@ -102,6 +103,7 @@ VFS_OBJ        := $(BUILD_DIR)/vfs.o
 INITRD_OBJ     := $(BUILD_DIR)/initrd.o
 ATA_OBJ        := $(BUILD_DIR)/ata.o
 FAT32_OBJ      := $(BUILD_DIR)/fat32.o
+FB_OBJ         := $(BUILD_DIR)/fb.o
 VBE_OBJ        := $(BUILD_DIR)/vbe.o
 ELF_DEMO_OBJ   := $(BUILD_DIR)/elf_demo.o
 ELF_DEMO_ELF   := $(BUILD_DIR)/elf_demo.elf
@@ -145,7 +147,7 @@ QEMUFLAGS      := -drive format=raw,file=$(OS_BIN) \
 
 # --- Boot image limits -------------------------------------------------------
 STAGE2_SECTORS    := 4
-KERNEL_MAX_SECTORS := 190
+KERNEL_MAX_SECTORS := 240
 KERNEL_MAX_BYTES   := $(shell echo $$(( $(KERNEL_MAX_SECTORS) * 512 )))
 OS_IMAGE_SIZE      := 262144
 
@@ -281,6 +283,10 @@ $(ATA_OBJ): $(ATA_SRC) | $(BUILD_DIR)
 $(FAT32_OBJ): $(FAT32_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# --- Framebuffer primitives + console backend (ELF object) ------------------
+$(FB_OBJ): $(FB_SRC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # --- VBE framebuffer bootstrap (ELF object) ---------------------------------
 $(VBE_OBJ): $(VBE_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -384,6 +390,7 @@ KERNEL_OBJS := $(KENTRY_OBJ) $(KERNEL_OBJ) $(VGA_OBJ) $(SERIAL_OBJ) \
                $(IDT_OBJ) $(ISR_OBJ) $(ISR_STUBS_OBJ) \
                $(PIC_OBJ) $(IRQ_OBJ) $(IRQ_STUBS_OBJ) \
                $(PIT_OBJ) $(PMM_OBJ) $(PAGING_OBJ) $(HEAP_OBJ) \
+               $(FB_OBJ) \
                $(VBE_OBJ) \
                $(KEYBOARD_OBJ) $(CONSOLE_OBJ) $(PROCESS_OBJ) \
                $(PROCESS_STUBS_OBJ) $(TSS_OBJ) $(SPINLOCK_OBJ) $(SYNC_OBJ) \

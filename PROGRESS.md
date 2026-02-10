@@ -1177,3 +1177,41 @@
   - Headless QEMU boot (`-display none`, serial-to-file) reaches full kernel init with VBE log:
     - `[VBE] mode=0x00000118 1024x768x24 pitch=3072 fb_phys=0xFD000000 fb_virt=0xD0000000`
   - `make demo` passes regression checks.
+
+## 2026-02-10 20:23:59 +0300 - Phase 8, Task 36: Graphics Primitives + Framebuffer Console
+- Completed: Added a double-buffered framebuffer backend with pixel/rect primitives and integrated it under the existing `vga_*` API as the active console path when VBE is available.
+- New module:
+  - `kernel/fb.c`, `kernel/fb.h`
+    - `fb_init()` initializes from `vbe_get_mode()` and creates a back buffer via `kmalloc`.
+    - primitive ops:
+      - `fb_put_pixel()`
+      - `fb_fill_rect()`
+      - `fb_clear()`
+      - `fb_swap_buffers()`
+    - supports 16/24/32bpp pixel write formats.
+    - text console layer:
+      - 8x16 bitmap glyph rendering (8x8 glyph rows doubled vertically)
+      - cursor tracking, newline/tab/backspace behavior, scrolling
+      - color mapping from VGA 16-color palette to RGB.
+- Console integration:
+  - `kernel/vga.c` rewritten as a dual backend:
+    - framebuffer-backed console when `fb_init()` succeeds
+    - legacy VGA text-mode backend retained as fallback.
+  - `kernel/kernel.c` init order adjusted so `kheap_init()` runs before `vga_init()` (framebuffer back-buffer allocation requires heap).
+- Build updates:
+  - `Makefile`:
+    - added `kernel/fb.c` build wiring.
+    - increased `KERNEL_MAX_SECTORS` from `190` to `240` after kernel growth from Task 36 exceeded prior image cap.
+- Performance issue encountered and fixed:
+  - Initial implementation copied the full framebuffer on every character draw, which slowed boot enough to break scripted demo timing.
+  - Fixed by adding dirty-rectangle tracking and partial front-buffer blits in `fb_swap_buffers()`.
+- Reference docs consulted:
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+  - `docs/core/Double_Buffering.md`
+  - `docs/core/PC_Screen_Font.md`
+- Verified:
+  - `make -j4` succeeds.
+  - headless serial boot shows framebuffer backend activation:
+    - `[FB] initialized 1024x768 bpp=24 pitch=3072`
+    - `[VGA] framebuffer console active`
+  - `make demo` passes end-to-end regression checks.

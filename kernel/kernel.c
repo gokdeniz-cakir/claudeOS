@@ -54,6 +54,7 @@ void kernel_main(void)
     serial_puts("Paging enabled\n");
 
     pmm_init();
+    kheap_init();
     (void)vbe_init();
 
     vga_init();
@@ -65,7 +66,6 @@ void kernel_main(void)
     vga_puts("Paging enabled.\n");
     vga_puts("PMM initialized.\n");
 
-    kheap_init();
     vga_puts("Kernel heap initialized.\n");
     serial_puts("Kernel heap initialized\n");
 
