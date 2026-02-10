@@ -1504,3 +1504,13 @@
   - `make doom -j4` passes.
   - `make build/fat32.img` passes.
   - headless QEMU run confirms Doom enters graphics init and runs without framebuffer-present errors.
+
+## 2026-02-10 23:14:49 +0300 - Docs Sync: AGENTS Baseline Updated for GUI + Doom Era
+- Completed: refreshed `AGENTS.md` top-level project baseline so agent behavior matches current system scope.
+- Updated:
+  - Added explicit **Current Project State** section (Phases 1-9 complete).
+  - Marked VBE framebuffer + double-buffered graphics path as existing infrastructure.
+  - Marked PS/2 mouse + window manager stack as existing infrastructure.
+  - Marked userspace libc/shell/apps and DoomGeneric runtime as existing infrastructure.
+  - Corrected coding-conventions note that previously said userspace libc was only "planned."
+  - Added roadmap preface clarifying Phases 1-9 are completed baseline.

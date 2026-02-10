@@ -6,6 +6,25 @@ A 32-bit x86 operating system.
 
 ClaudeOS is a project in LLM-driven systems programming. 
 
+## Current Project State
+
+- Phases 1-9 are complete (boot, memory, interrupts, scheduling, user mode/syscalls, VFS/initrd/FAT32, userspace shell/apps, GUI stack, Doom port).
+- Graphics infrastructure is already in-tree and active:
+  - VBE linear framebuffer mode setup in stage2.
+  - Linear framebuffer mapped into kernel virtual MMIO space.
+  - Framebuffer backend with drawing primitives + double buffering.
+  - Framebuffer text console path (not VGA-text-only anymore).
+- Input/GUI infrastructure is already in-tree and active:
+  - PS/2 keyboard (IRQ1) and PS/2 mouse (IRQ12).
+  - Basic window manager with stacking, focus, title bars, dragging.
+- Userspace/runtime infrastructure is already in-tree and active:
+  - Ring 3 ELF loading + syscall layer.
+  - Userspace libc, shell, standalone apps.
+  - DoomGeneric userspace port with framebuffer presentation path.
+- Agent planning baseline:
+  - Do not treat this project as text-mode-only.
+  - Build on existing framebuffer/mouse/window-manager/userspace subsystems unless explicitly refactoring them.
+
 ## Constraints
 
 - **Agent role:** Debug based on reported errors and CRUCIALLY, consult reference docs frequently. Follow the milestone roadmap as the default plan. Small prerequisite refactors, tests, and tooling/documentation updates are allowed when they directly unblock the current milestone. Do not implement future-milestone features unless explicitly requested.
@@ -22,6 +41,8 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 - **Kernel model:** Monolithic, higher-half kernel (mapped at 0xC0000000)
 - **Language:** C (C99) with minimal assembly where hardware requires it (boot, context switch, interrupt stubs)
 - **Userspace:** Ring 3 processes loaded from ELF binaries
+- **Graphics:** VBE linear framebuffer path with kernel-side double-buffered rendering
+- **Input:** PS/2 keyboard + PS/2 mouse interrupt-driven drivers
 
 ## Memory Layout
 
@@ -53,9 +74,11 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 - **Comments:** Block comments (`/* */`) for function documentation, inline comments (`//`) for non-obvious logic
 - **Headers:** Every `.c` file has a corresponding `.h`, include guards with `#ifndef CLAUDE_COMPONENT_H`
 - **Assembly:** NASM syntax (Intel), not GAS (AT&T)
-- **No external dependencies in kernel space.** No hosted libc, no POSIX, and no third-party libraries in the kernel. A userspace libc is planned in Phase 7.
+- **No external dependencies in kernel space.** No hosted libc, no POSIX, and no third-party libraries in the kernel. Userspace libc is implemented and should continue evolving in userspace only.
 
 ## Milestone Roadmap
+
+Phases 1-9 below are complete and define the current baseline system.
 
 ### Phase 1: Boot 
 1. MBR bootloader that prints to screen in real mode - Completed: boot/mbr.asm, Makefile
