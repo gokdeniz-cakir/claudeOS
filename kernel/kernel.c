@@ -19,6 +19,7 @@
 #include "initrd.h"
 #include "fat32.h"
 #include "vbe.h"
+#include "wm.h"
 
 static void demo_delay(void)
 {
@@ -108,6 +109,12 @@ void kernel_main(void)
         vga_puts("PS/2 mouse init failed.\n");
     }
 
+    if (wm_init() == 0) {
+        vga_puts("Window manager ready (type wmstart).\n");
+    } else {
+        vga_puts("Window manager unavailable.\n");
+    }
+
     process_init();
     vga_puts("Process subsystem initialized.\n");
     serial_puts("Process subsystem initialized\n");
@@ -159,7 +166,21 @@ void kernel_main(void)
         }
 
         while (keyboard_read_char(&c) != 0) {
+            if (wm_is_active() != 0) {
+                if (c == 'q' || c == 'Q') {
+                    wm_stop();
+                    vga_clear();
+                    vga_puts("Window manager stopped.\n");
+                    console_show_prompt();
+                }
+                continue;
+            }
+
             console_handle_char(c);
+        }
+
+        if (wm_is_active() != 0) {
+            wm_update();
         }
         __asm__ volatile ("hlt");
     }

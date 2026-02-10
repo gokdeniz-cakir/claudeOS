@@ -1247,3 +1247,43 @@
   - `make -j4` succeeds with `-Wall -Wextra -Werror`.
   - serial boot now includes:
     - `[MOUSE] PS/2 mouse initialized (IRQ12, 3-byte packets)` on successful init.
+
+## 2026-02-10 20:43:40 +0300 - Phase 8, Task 38: Basic Window Manager
+- Completed: Added a basic in-kernel window manager in framebuffer mode with stacking windows, title bars, event dispatch, and title-bar dragging.
+- New module:
+  - `kernel/wm.c`, `kernel/wm.h`
+    - desktop compositor loop built on existing framebuffer back buffer.
+    - maintains z-order list for up to 8 windows.
+    - pointer event dispatch pipeline (`move/down/up/focus/drag-start/drag-move/drag-end`) to per-window handlers.
+    - click-to-focus + bring-to-front behavior.
+    - title-bar drag mechanics with screen-bound clamping.
+    - simple software cursor rendering.
+    - demo window set (3 overlapping windows) for immediate interaction.
+- Framebuffer enhancements:
+  - `kernel/fb.c`, `kernel/fb.h`
+    - added generic pixel-text helpers for GUI overlays:
+      - `fb_draw_char()`
+      - `fb_draw_text()`
+- Console/kernel integration:
+  - `kernel/console.c`, `kernel/console.h`
+    - added `wmstart` command.
+    - help output now documents WM launch and `q` exit behavior.
+    - added `console_show_prompt()` helper for prompt restore after WM exit.
+  - `kernel/kernel.c`
+    - initializes WM subsystem after mouse init.
+    - runs `wm_update()` in main loop while WM mode is active.
+    - captures `q` key in WM mode to stop WM and return to console prompt.
+  - `Makefile`
+    - added `kernel/wm.c` build + link wiring.
+- Reference docs consulted:
+  - `docs/core/GUI.md`
+  - `docs/core/Compositing.md`
+  - `docs/core/Double_Buffering.md`
+  - `docs/core/Mouse_Input.md`
+- Verified:
+  - `make -j4` passes.
+  - headless QEMU run (`build/serial_task38_wm.log`) confirms lifecycle markers:
+    - `[WM] initialized 1024x768 windows=3`
+    - `[WM] started (drag title bars with mouse, press q to exit)`
+    - `[WM] stopped`
+  - `make demo` regression script still passes end-to-end.

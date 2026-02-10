@@ -110,7 +110,7 @@ The `docs/core/` directory contains 272 curated articles from the OSDev wiki cov
 35. VBE framebuffer setup (real-mode VBE call in stage2, linear framebuffer mapped into kernel space) - Completed: boot/stage2.asm, boot/mbr.asm, kernel/vbe.c, kernel/vbe.h, kernel/kernel.c, Makefile
 36. Graphics primitives + framebuffer console (pixel ops, bitmap font, double buffering) - Completed: kernel/fb.c, kernel/fb.h, kernel/vga.c, kernel/kernel.c, Makefile
 37. PS/2 mouse driver (IRQ12) - Completed: kernel/mouse.c, kernel/mouse.h, kernel/kernel.c, Makefile
-38. Basic window manager (stacking windows, event dispatch, title bars, dragging)
+38. Basic window manager (stacking windows, event dispatch, title bars, dragging) - Completed: kernel/wm.c, kernel/wm.h, kernel/fb.c, kernel/fb.h, kernel/console.c, kernel/console.h, kernel/kernel.c, Makefile
 
 ### Phase 9: DOOM
 

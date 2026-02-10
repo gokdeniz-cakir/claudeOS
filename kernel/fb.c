@@ -247,13 +247,10 @@ static const uint8_t *fb_glyph_for_char(char c)
     return font8x8_upper_basic['?' - 0x20];
 }
 
-static void fb_console_draw_char_at(uint16_t row, uint16_t col, char c, uint8_t fg, uint8_t bg)
+static void fb_draw_char_pixels(uint32_t x0, uint32_t y0, char c,
+                                uint32_t fg_rgb, uint32_t bg_rgb)
 {
-    uint32_t x0 = (uint32_t)col * FB_GLYPH_W;
-    uint32_t y0 = (uint32_t)row * FB_GLYPH_H;
     const uint8_t *glyph = fb_glyph_for_char(c);
-    uint32_t fg_rgb = palette_to_rgb(fg);
-    uint32_t bg_rgb = palette_to_rgb(bg);
 
     fb_fill_rect(x0, y0, FB_GLYPH_W, FB_GLYPH_H, bg_rgb);
 
@@ -269,6 +266,16 @@ static void fb_console_draw_char_at(uint16_t row, uint16_t col, char c, uint8_t 
             }
         }
     }
+}
+
+static void fb_console_draw_char_at(uint16_t row, uint16_t col, char c, uint8_t fg, uint8_t bg)
+{
+    uint32_t x0 = (uint32_t)col * FB_GLYPH_W;
+    uint32_t y0 = (uint32_t)row * FB_GLYPH_H;
+    uint32_t fg_rgb = palette_to_rgb(fg);
+    uint32_t bg_rgb = palette_to_rgb(bg);
+
+    fb_draw_char_pixels(x0, y0, c, fg_rgb, bg_rgb);
 }
 
 static void fb_console_scroll(uint8_t bg)
@@ -449,6 +456,43 @@ void fb_swap_buffers(void)
     }
 
     g_fb.dirty = 0U;
+}
+
+void fb_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg_rgb, uint32_t bg_rgb)
+{
+    if (g_fb.ready == 0U) {
+        return;
+    }
+
+    fb_draw_char_pixels(x, y, c, fg_rgb, bg_rgb);
+}
+
+void fb_draw_text(uint32_t x, uint32_t y, const char *text, uint32_t fg_rgb, uint32_t bg_rgb)
+{
+    uint32_t cursor_x = x;
+    uint32_t cursor_y = y;
+
+    if (g_fb.ready == 0U || text == 0) {
+        return;
+    }
+
+    while (*text != '\0') {
+        char c = *text++;
+
+        if (c == '\n') {
+            cursor_x = x;
+            cursor_y += FB_GLYPH_H;
+            continue;
+        }
+
+        if (c == '\r') {
+            cursor_x = x;
+            continue;
+        }
+
+        fb_draw_char_pixels(cursor_x, cursor_y, c, fg_rgb, bg_rgb);
+        cursor_x += FB_GLYPH_W;
+    }
 }
 
 void fb_console_init(uint8_t fg, uint8_t bg)
