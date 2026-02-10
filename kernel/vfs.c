@@ -577,6 +577,59 @@ int32_t vfs_write(int32_t fd, const void *buffer, uint32_t size)
     return bytes_written;
 }
 
+int32_t vfs_seek(int32_t fd, int32_t offset, uint32_t whence)
+{
+    int32_t idx;
+    uint32_t irq_flags;
+    uint32_t caller_pid;
+    struct vfs_open_file *file;
+    int64_t base;
+    int64_t target;
+
+    idx = vfs_fd_to_index(fd);
+    if (idx < 0) {
+        return VFS_ERR_BAD_FD;
+    }
+
+    caller_pid = process_get_current_pid();
+    irq_flags = spinlock_lock_irqsave(&vfs_lock);
+    file = &vfs_open_files[(uint32_t)idx];
+    if (file->in_use == 0U) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_BAD_FD;
+    }
+
+    if (vfs_owner_allows_access(file, caller_pid) == 0U) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_ACCESS;
+    }
+
+    switch (whence) {
+        case VFS_SEEK_SET:
+            base = 0;
+            break;
+        case VFS_SEEK_CUR:
+            base = (int64_t)(uint64_t)file->position;
+            break;
+        case VFS_SEEK_END:
+            base = (int64_t)(uint64_t)file->node.size;
+            break;
+        default:
+            spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+            return VFS_ERR_INVALID;
+    }
+
+    target = base + (int64_t)offset;
+    if (target < 0 || target > (int64_t)(uint64_t)file->node.size) {
+        spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+        return VFS_ERR_INVALID;
+    }
+
+    file->position = (uint32_t)(uint64_t)target;
+    spinlock_unlock_irqrestore(&vfs_lock, irq_flags);
+    return (int32_t)file->position;
+}
+
 int32_t vfs_close(int32_t fd)
 {
     int32_t idx;

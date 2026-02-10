@@ -1457,3 +1457,24 @@
     - appends auto-detected `-iwad` pair after that.
 - Verified:
   - `make doom -j4` passes after patch.
+
+## 2026-02-10 22:54:44 +0300 - Post-Task 42 Runtime Fix: Doom WAD Load Stall on FAT32
+- Issue observed:
+  - Doom appeared to hang for a long time at:
+    - `W_Init: Init WADfiles.`
+    - `adding /fat/doom1.wad`
+- Root cause:
+  - userspace `fseek()` implementation in `user/libc/stdio.c` emulated seeks by reading/skip-scanning file bytes.
+  - Doom WAD path uses `fseek(..., SEEK_END)` and frequent seek-based reads; on FAT32 + ATA PIO this became prohibitively slow for large WAD files.
+- Fix:
+  - added kernel-side seek support:
+    - `kernel/vfs.h`, `kernel/vfs.c`: `vfs_seek(fd, offset, whence)` with `SET/CUR/END`.
+  - exposed seek syscall:
+    - `kernel/syscall.h`, `kernel/syscall.c`: `SYSCALL_LSEEK`.
+    - `user/libc/include/unistd.h`, `user/libc/syscall.c`: `lseek()` wrapper.
+  - rewired stdio seek path:
+    - `user/libc/stdio.c`: `fseek()` now calls kernel `lseek()` directly; removed byte-scan based seek/size emulation.
+- Verified:
+  - `make -j4` passes.
+  - `make doom -j4` and `make build/fat32.img` pass.
+  - headless QEMU reproduction now advances past `adding /fat/doom1.wad` immediately and reaches WAD header validation (no stall).

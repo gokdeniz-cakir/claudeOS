@@ -9,7 +9,6 @@
 
 #define CLAUDE_STDIO_MAX_FILES  16U
 #define CLAUDE_FILE_PATH_MAX     128U
-#define CLAUDE_FREAD_SKIP_CHUNK  128U
 
 #define CLAUDE_FILE_READ_FLAG    0x01U
 #define CLAUDE_FILE_WRITE_FLAG   0x02U
@@ -541,122 +540,6 @@ static uint32_t file_flags_to_open_flags(uint8_t flags)
     return open_flags;
 }
 
-static int file_reopen(struct claude_file *stream)
-{
-    int new_fd;
-    uint32_t open_flags;
-
-    if (stream == 0 || stream->in_use == 0U || stream->path[0] == '\0') {
-        return -1;
-    }
-
-    open_flags = file_flags_to_open_flags(stream->flags);
-    new_fd = open(stream->path, open_flags);
-    if (new_fd < 0) {
-        stream->error = 1U;
-        return -1;
-    }
-
-    if (close(stream->fd) < 0) {
-        (void)close(new_fd);
-        stream->error = 1U;
-        return -1;
-    }
-
-    stream->fd = new_fd;
-    stream->position = 0U;
-    stream->eof = 0U;
-    stream->error = 0U;
-    return 0;
-}
-
-static int file_skip_forward(struct claude_file *stream, uint32_t target)
-{
-    char scratch[CLAUDE_FREAD_SKIP_CHUNK];
-
-    while (stream->position < target) {
-        uint32_t remaining = target - stream->position;
-        uint32_t chunk = remaining;
-        ssize_t rc;
-
-        if (chunk > (uint32_t)sizeof(scratch)) {
-            chunk = (uint32_t)sizeof(scratch);
-        }
-
-        rc = read(stream->fd, scratch, chunk);
-        if (rc < 0) {
-            stream->error = 1U;
-            return -1;
-        }
-        if (rc == 0) {
-            stream->eof = 1U;
-            return -1;
-        }
-
-        stream->position += (uint32_t)rc;
-    }
-
-    stream->eof = 0U;
-    return 0;
-}
-
-static int file_seek_abs(struct claude_file *stream, uint32_t target)
-{
-    if (stream->position == target) {
-        stream->eof = 0U;
-        stream->error = 0U;
-        return 0;
-    }
-
-    if (target > stream->position) {
-        return file_skip_forward(stream, target);
-    }
-
-    if (file_reopen(stream) != 0) {
-        return -1;
-    }
-
-    return file_skip_forward(stream, target);
-}
-
-static int file_measure_size(struct claude_file *stream, uint32_t *out_size)
-{
-    uint32_t saved_pos;
-
-    if (stream == 0 || out_size == 0) {
-        return -1;
-    }
-
-    saved_pos = stream->position;
-    if (file_reopen(stream) != 0) {
-        return -1;
-    }
-
-    for (;;) {
-        char scratch[CLAUDE_FREAD_SKIP_CHUNK];
-        ssize_t rc = read(stream->fd, scratch, (uint32_t)sizeof(scratch));
-
-        if (rc < 0) {
-            stream->error = 1U;
-            return -1;
-        }
-
-        if (rc == 0) {
-            break;
-        }
-
-        stream->position += (uint32_t)rc;
-    }
-
-    *out_size = stream->position;
-
-    if (file_reopen(stream) != 0) {
-        return -1;
-    }
-
-    return file_skip_forward(stream, saved_pos);
-}
-
 int putchar(int c)
 {
     char ch = (char)c;
@@ -951,58 +834,22 @@ int fclose(FILE *stream)
 
 int fseek(FILE *stream, long offset, int whence)
 {
-    int32_t base;
-    int32_t target;
+    int32_t new_pos;
 
     stdio_init_streams();
     if (stream == 0 || stream->in_use == 0U) {
         return -1;
     }
 
-    if (whence == SEEK_SET) {
-        base = 0;
-    } else if (whence == SEEK_CUR) {
-        base = (int32_t)stream->position;
-    } else if (whence == SEEK_END) {
-        uint32_t size;
-        if ((stream->flags & CLAUDE_FILE_READ_FLAG) == 0U ||
-            file_measure_size(stream, &size) != 0) {
-            stream->error = 1U;
-            return -1;
-        }
-        base = (int32_t)size;
-    } else {
-        return -1;
-    }
-
-    if (offset > 0L && base > (0x7FFFFFFF - (int32_t)offset)) {
+    new_pos = lseek(stream->fd, (int32_t)offset, whence);
+    if (new_pos < 0) {
         stream->error = 1U;
         return -1;
     }
 
-    if (offset < 0L) {
-        int32_t neg = (int32_t)offset;
-        if (neg == (int32_t)0x80000000) {
-            stream->error = 1U;
-            return -1;
-        }
-        if (base < -neg) {
-            stream->error = 1U;
-            return -1;
-        }
-    }
-
-    target = base + (int32_t)offset;
-    if (target < 0) {
-        stream->error = 1U;
-        return -1;
-    }
-
-    if (file_seek_abs(stream, (uint32_t)target) != 0) {
-        return -1;
-    }
-
+    stream->position = (uint32_t)new_pos;
     stream->eof = 0U;
+    stream->error = 0U;
     return 0;
 }
 

@@ -418,6 +418,15 @@ static uint32_t syscall_process_count(void)
     return process_count();
 }
 
+static int32_t syscall_lseek(uint32_t fd, int32_t offset, uint32_t whence)
+{
+    int32_t rc = vfs_seek((int32_t)fd, offset, whence);
+    if (rc < 0) {
+        return -1;
+    }
+    return rc;
+}
+
 static int32_t syscall_kbd_read(uint32_t user_event_ptr)
 {
     struct keyboard_event event;
@@ -482,6 +491,8 @@ static uint32_t syscall_dispatch(uint32_t number, uint32_t arg0, uint32_t arg1,
             return (uint32_t)(int32_t)syscall_kbd_read(arg0);
         case SYSCALL_TICKS_MS:
             return syscall_ticks_ms();
+        case SYSCALL_LSEEK:
+            return (uint32_t)(int32_t)syscall_lseek(arg0, (int32_t)arg1, arg2);
         default:
             return SYSCALL_RET_ENOSYS;
     }

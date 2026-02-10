@@ -24,6 +24,7 @@ int fork(void);
 int exec(const char *path);
 int getpid(void);
 int proc_count(void);
+int lseek(int fd, int32_t offset, int whence);
 int kbd_read_event(struct kbd_event *event);
 uint32_t ticks_ms(void);
 void *sbrk(int32_t increment);

@@ -12,6 +12,10 @@
 #define VFS_OPEN_READ       0x1U
 #define VFS_OPEN_WRITE      0x2U
 
+#define VFS_SEEK_SET        0U
+#define VFS_SEEK_CUR        1U
+#define VFS_SEEK_END        2U
+
 #define VFS_OK                 0
 #define VFS_ERR_INVALID       -1
 #define VFS_ERR_NOT_FOUND     -2
@@ -62,6 +66,7 @@ int32_t vfs_resolve(const char *path, struct vfs_node *out_node);
 int32_t vfs_open(const char *path, uint32_t flags);
 int32_t vfs_read(int32_t fd, void *buffer, uint32_t size);
 int32_t vfs_write(int32_t fd, const void *buffer, uint32_t size);
+int32_t vfs_seek(int32_t fd, int32_t offset, uint32_t whence);
 int32_t vfs_close(int32_t fd);
 
 /* Close all open descriptors owned by the given process id. */

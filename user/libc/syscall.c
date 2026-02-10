@@ -14,6 +14,7 @@
 #define SYSCALL_PCOUNT 10U
 #define SYSCALL_KBD_READ 11U
 #define SYSCALL_TICKS_MS 12U
+#define SYSCALL_LSEEK 13U
 
 static inline uint32_t syscall3(uint32_t number, uint32_t arg0, uint32_t arg1,
                                 uint32_t arg2)
@@ -70,6 +71,12 @@ int getpid(void)
 int proc_count(void)
 {
     return (int)(int32_t)syscall3(SYSCALL_PCOUNT, 0U, 0U, 0U);
+}
+
+int lseek(int fd, int32_t offset, int whence)
+{
+    return (int)(int32_t)syscall3(SYSCALL_LSEEK, (uint32_t)fd,
+                                  (uint32_t)offset, (uint32_t)whence);
 }
 
 int kbd_read_event(struct kbd_event *event)
