@@ -252,6 +252,7 @@ void DG_SetWindowTitle(const char *title)
 int main(int argc, char **argv)
 {
     const char *default_iwad = 0;
+    static char arg0_default[] = "doomgeneric";
     char *launch_argv[32];
     int launch_argc = 0;
     int i;
@@ -270,7 +271,15 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    for (i = 0; i < argc && launch_argc < 31; i++) {
+    if (launch_argc < 31) {
+        if (argc > 0 && argv != 0 && argv[0] != 0) {
+            launch_argv[launch_argc++] = argv[0];
+        } else {
+            launch_argv[launch_argc++] = arg0_default;
+        }
+    }
+
+    for (i = 1; i < argc && launch_argc < 31; i++) {
         launch_argv[launch_argc++] = argv[i];
     }
 

@@ -1444,3 +1444,16 @@
   - `kernel.bin` reached `132588` bytes, exceeding previous cap (`131072`), which stopped `build/os.bin` generation.
 - Verified:
   - `make -j4` passes and rebuilds `build/os.bin` successfully with the new cap.
+
+## 2026-02-10 22:46:50 +0300 - Post-Task 42 Runtime Fix: Doom `-iwad` argv Indexing
+- Issue observed:
+  - Doom backend log showed `using IWAD: /fat/doom1.wad` but Doom still printed `-iwad not specified`.
+- Root cause:
+  - launcher argv assembly placed `-iwad` at `argv[0]` when no inherited process argv was present; Doom option parser scans options from `argv[1]`.
+- Fix:
+  - `user/doomgeneric/doomgeneric_claudeos.c`
+    - always seeds `argv[0]` with a program name (`doomgeneric`) when needed.
+    - appends inherited arguments from index 1.
+    - appends auto-detected `-iwad` pair after that.
+- Verified:
+  - `make doom -j4` passes after patch.
