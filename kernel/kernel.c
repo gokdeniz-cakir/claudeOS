@@ -167,11 +167,13 @@ void kernel_main(void)
 
         while (keyboard_read_char(&c) != 0) {
             if (wm_is_active() != 0) {
-                if (c == 'q' || c == 'Q') {
+                if (c == 0x1B) {
                     wm_stop();
                     vga_clear();
                     vga_puts("Window manager stopped.\n");
                     console_show_prompt();
+                } else {
+                    wm_handle_key(c);
                 }
                 continue;
             }

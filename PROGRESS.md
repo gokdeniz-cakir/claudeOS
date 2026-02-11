@@ -1514,3 +1514,83 @@
   - Marked userspace libc/shell/apps and DoomGeneric runtime as existing infrastructure.
   - Corrected coding-conventions note that previously said userspace libc was only "planned."
   - Added roadmap preface clarifying Phases 1-9 are completed baseline.
+
+## 2026-02-11 21:46:16 +0300 - GUI Primitive Apps: Calculator, Uptime, Checklist
+- Completed: upgraded window manager demo windows into interactive GUI apps while keeping existing framebuffer + mouse + drag/focus architecture.
+  - `kernel/wm.c`
+    - added app-aware window state/draw handlers and per-app event handling.
+    - replaced placeholder windows with:
+      - `Calculator` (mouse-driven integer math with `+ - * / =` and clear)
+      - `Uptime` (live PIT-based uptime display + start/stop/reset stopwatch)
+      - `Checklist` (toggleable primitive system-task list)
+    - added periodic redraw for live uptime/stopwatch updates.
+    - wired close-button hit-testing so title-bar close buttons now actually close windows.
+- Completed: console help text now advertises the GUI app set.
+  - `kernel/console.c`
+- Reference docs consulted:
+  - `docs/core/GUI.md`
+  - `docs/core/Drawing_In_a_Linear_Framebuffer.md`
+  - `docs/core/Double_Buffering.md`
+  - `docs/core/Mouse_Input.md`
+  - `docs/core/Compositing.md`
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - `make demo` passes (`tools/run_task34_demo.sh`).
+
+## 2026-02-11 21:59:05 +0300 - GUI UX Update: Dock/Taskbar + Terminal Window + Doom Checklist Removal
+- Completed: removed Doom-specific checklist wording from GUI checklist app.
+  - `kernel/wm.c`
+    - replaced final checklist item label with `OPEN TERMINAL`.
+- Completed: added a bottom taskbar/dock to the window manager.
+  - `kernel/wm.c`
+    - added persistent taskbar rendering in WM compositor pass.
+    - added dock buttons for `Terminal`, `Calculator`, `Uptime`, and `Checklist`.
+    - clicking dock buttons focuses existing app windows or relaunches closed ones.
+    - reserved bottom screen region for taskbar (window hit-test/clamp avoids overlap).
+- Completed: added a terminal emulator GUI window that routes commands through the existing console command dispatcher.
+  - `kernel/wm.c`
+    - added `Terminal` app with scrollback buffer, input line, prompt, and Enter/backspace handling.
+    - integrated keyboard delivery to focused terminal window via new WM key API.
+    - added console-output capture hook to append command output into terminal scrollback.
+  - `kernel/wm.h`
+    - added `wm_handle_key(char c)` API.
+  - `kernel/kernel.c`
+    - while WM is active, `Esc` exits WM; other keypresses are forwarded to `wm_handle_key`.
+- Completed: console subsystem refactor to support terminal hosting.
+  - `kernel/console.h`, `kernel/console.c`, `kernel/syscall.c`
+    - added `console_execute_command(const char *command)` to run existing command handlers directly.
+    - added output hook registration (`console_set_output_hook(...)`) so WM terminal can mirror console text.
+    - added `console_mirror_output(...)` and wired `syscall_write()` to forward userspace stdout/stderr into the terminal scrollback hook.
+    - updated help/start messages to describe dock/terminal workflow and `Esc` WM exit key.
+- Reference docs consulted:
+  - `docs/core/GUI.md`
+  - `docs/core/Mouse_Input.md`
+- Issue encountered:
+  - `docs/core/Text_UI.md` is not present in this docs snapshot; continued with available GUI/input references.
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - `make demo` passes (`tools/run_task34_demo.sh`).
+
+## 2026-02-11 22:17:23 +0300 - WM Terminal Stability + Command UX Fixes
+- Investigated reported WM terminal issues (unknown `ls/cat`, shell visual shake, Doom compositing overlap, shell/exit confusion).
+- Root causes identified:
+  - terminal command path used strict whole-line matching with limited command set (no arg parsing; case-sensitive);
+  - userspace `write()` still drew directly to framebuffer console while WM compositor was active;
+  - `doom` command remained callable inside WM, conflicting with WM compositor rendering.
+- Fixes applied:
+  - `kernel/console.c`
+    - rewrote command execution path to shell-like token parsing (`argv`) and case-insensitive command matching.
+    - added/implemented terminal-friendly builtins: `ls`, `cat`, `echo`, `clear`, `help`, `ps`, `exit`.
+    - preserved existing kernel command handlers (`ring3test`, `elftest`, `forkexec`, `libctest`, `shell`, `uhello`, `ucat`, `uexec`, `appsdemo`, `doom`, `wmstart`).
+    - gated `doom` in WM mode with explicit guidance to exit WM first.
+    - gated `shell` in WM mode with explicit note that WM terminal builtins should be used.
+  - `kernel/syscall.c`
+    - when WM is active, `syscall_write()` no longer writes directly via `vga_putchar`; output is mirrored through terminal hook instead.
+    - prevents framebuffer console and WM compositor from fighting over the same display region.
+- Expected behavior after fix:
+  - `ls`/`cat`/etc now work in WM terminal, including uppercase/lowercase command entry.
+  - running `shell` in WM no longer causes repeated framebuffer shake/scroll artifacts.
+  - `doom` is blocked inside WM mode to avoid mixed compositing/distorted overlays.
+- Verified:
+  - `make -j4` passes with `-Wall -Wextra -Werror`.
+  - `make demo` passes (`tools/run_task34_demo.sh`).

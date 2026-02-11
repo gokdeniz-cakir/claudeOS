@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "console.h"
 #include "elf.h"
 #include "fb.h"
 #include "heap.h"
@@ -15,6 +16,7 @@
 #include "usermode.h"
 #include "vfs.h"
 #include "vga.h"
+#include "wm.h"
 
 #define SYSCALL_RET_ENOSYS   0xFFFFFFFFU
 #define SYSCALL_RET_EINVAL   0xFFFFFFFFU
@@ -201,10 +203,13 @@ static int32_t syscall_write(uint32_t fd, uint32_t user_buf, uint32_t len)
 
     flags = spinlock_lock_irqsave(&syscall_write_lock);
     for (i = 0U; i < len; i++) {
-        vga_putchar(buf[i]);
+        if (wm_is_active() == 0) {
+            vga_putchar(buf[i]);
+        }
         serial_putchar(buf[i]);
     }
     spinlock_unlock_irqrestore(&syscall_write_lock, flags);
+    console_mirror_output(buf, len);
 
     return (int32_t)len;
 }

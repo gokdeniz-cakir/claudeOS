@@ -21,4 +21,7 @@ int wm_is_active(void);
 /* Process pending mouse events and repaint the desktop as needed. */
 void wm_update(void);
 
+/* Route one translated keyboard character to active GUI app(s). */
+void wm_handle_key(char c);
+
 #endif /* CLAUDE_WM_H */
